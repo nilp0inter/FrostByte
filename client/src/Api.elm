@@ -2,15 +2,17 @@ module Api exposing
     ( consumePortion
     , createBatch
     , deleteContainerType
+    , deleteIngredient
     , fetchBatchPortions
     , fetchBatches
-    , fetchCategories
     , fetchContainerTypes
     , fetchHistory
+    , fetchIngredients
     , fetchPortionDetail
     , printLabel
     , returnPortionToFreezer
     , saveContainerType
+    , saveIngredient
     )
 
 import Api.Decoders exposing (..)
@@ -22,11 +24,11 @@ import UUID exposing (UUID)
 import Url
 
 
-fetchCategories : (Result Http.Error (List Category) -> msg) -> Cmd msg
-fetchCategories toMsg =
+fetchIngredients : (Result Http.Error (List Ingredient) -> msg) -> Cmd msg
+fetchIngredients toMsg =
     Http.get
-        { url = "/api/db/category"
-        , expect = Http.expectJson toMsg (Decode.list categoryDecoder)
+        { url = "/api/db/ingredient?order=name.asc"
+        , expect = Http.expectJson toMsg (Decode.list ingredientDecoder)
         }
 
 
@@ -142,6 +144,41 @@ deleteContainerType name toMsg =
         { method = "DELETE"
         , headers = []
         , url = "/api/db/container_type?name=eq." ++ Url.percentEncode name
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+saveIngredient : IngredientForm -> (Result Http.Error () -> msg) -> Cmd msg
+saveIngredient form toMsg =
+    let
+        ( method, url ) =
+            case form.editing of
+                Just originalName ->
+                    ( "PATCH", "/api/db/ingredient?name=eq." ++ Url.percentEncode originalName )
+
+                Nothing ->
+                    ( "POST", "/api/db/ingredient" )
+    in
+    Http.request
+        { method = method
+        , headers = []
+        , url = url
+        , body = Http.jsonBody (encodeIngredient form)
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+deleteIngredient : String -> (Result Http.Error () -> msg) -> Cmd msg
+deleteIngredient name toMsg =
+    Http.request
+        { method = "DELETE"
+        , headers = []
+        , url = "/api/db/ingredient?name=eq." ++ Url.percentEncode name
         , body = Http.emptyBody
         , expect = Http.expectWhatever toMsg
         , timeout = Nothing

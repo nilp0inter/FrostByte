@@ -2,6 +2,7 @@ module Api.Encoders exposing
     ( encodeBatchRequest
     , encodeConsumeRequest
     , encodeContainerType
+    , encodeIngredient
     , encodePrintRequest
     , encodeReturnToFreezerRequest
     )
@@ -13,13 +14,16 @@ import UUID exposing (UUID)
 
 encodeBatchRequest : BatchForm -> UUID -> List UUID -> Encode.Value
 encodeBatchRequest form batchUuid portionUuids =
+    let
+        ingredientNames =
+            List.map .name form.selectedIngredients
+    in
     Encode.object
         ([ ( "p_batch_id", Encode.string (UUID.toString batchUuid) )
          , ( "p_portion_ids", Encode.list (Encode.string << UUID.toString) portionUuids )
          , ( "p_name", Encode.string form.name )
-         , ( "p_category_id", Encode.string form.categoryId )
+         , ( "p_ingredient_names", Encode.list Encode.string ingredientNames )
          , ( "p_container_id", Encode.string form.containerId )
-         , ( "p_ingredients", Encode.string form.ingredients )
          , ( "p_created_at", Encode.string form.createdAt )
          ]
             ++ (if form.expiryDate /= "" then
@@ -63,4 +67,30 @@ encodeContainerType form =
     Encode.object
         [ ( "name", Encode.string form.name )
         , ( "servings_per_unit", Encode.float (Maybe.withDefault 1.0 (String.toFloat form.servingsPerUnit)) )
+        ]
+
+
+encodeIngredient : IngredientForm -> Encode.Value
+encodeIngredient form =
+    let
+        expireDaysValue =
+            case String.toInt form.expireDays of
+                Just days ->
+                    Encode.int days
+
+                Nothing ->
+                    Encode.null
+
+        bestBeforeDaysValue =
+            case String.toInt form.bestBeforeDays of
+                Just days ->
+                    Encode.int days
+
+                Nothing ->
+                    Encode.null
+    in
+    Encode.object
+        [ ( "name", Encode.string (String.toLower form.name) )
+        , ( "expire_days", expireDaysValue )
+        , ( "best_before_days", bestBeforeDaysValue )
         ]

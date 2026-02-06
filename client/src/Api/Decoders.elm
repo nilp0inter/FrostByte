@@ -1,9 +1,9 @@
 module Api.Decoders exposing
     ( batchSummaryDecoder
-    , categoryDecoder
     , containerTypeDecoder
     , createBatchResponseDecoder
     , historyPointDecoder
+    , ingredientDecoder
     , portionDetailDecoder
     , portionInBatchDecoder
     )
@@ -12,11 +12,12 @@ import Json.Decode as Decode exposing (Decoder)
 import Types exposing (..)
 
 
-categoryDecoder : Decoder Category
-categoryDecoder =
-    Decode.map2 Category
+ingredientDecoder : Decoder Ingredient
+ingredientDecoder =
+    Decode.map3 Ingredient
         (Decode.field "name" Decode.string)
-        (Decode.field "safe_days" Decode.int)
+        (Decode.field "expire_days" (Decode.nullable Decode.int))
+        (Decode.field "best_before_days" (Decode.nullable Decode.int))
 
 
 containerTypeDecoder : Decoder ContainerType
@@ -31,14 +32,14 @@ batchSummaryDecoder =
     Decode.succeed BatchSummary
         |> andMap (Decode.field "batch_id" Decode.string)
         |> andMap (Decode.field "name" Decode.string)
-        |> andMap (Decode.field "category_id" Decode.string)
         |> andMap (Decode.field "container_id" Decode.string)
-        |> andMap (Decode.field "ingredients" Decode.string)
+        |> andMap (Decode.field "best_before_date" (Decode.nullable Decode.string))
         |> andMap (Decode.field "batch_created_at" Decode.string)
         |> andMap (Decode.field "expiry_date" Decode.string)
         |> andMap (Decode.field "frozen_count" Decode.int)
         |> andMap (Decode.field "consumed_count" Decode.int)
         |> andMap (Decode.field "total_count" Decode.int)
+        |> andMap (Decode.field "ingredients" Decode.string)
 
 
 andMap : Decoder a -> Decoder (a -> b) -> Decoder b
@@ -56,8 +57,8 @@ portionDetailDecoder =
         |> andMap (Decode.field "status" Decode.string)
         |> andMap (Decode.field "consumed_at" (Decode.nullable Decode.string))
         |> andMap (Decode.field "name" Decode.string)
-        |> andMap (Decode.field "category_id" Decode.string)
         |> andMap (Decode.field "container_id" Decode.string)
+        |> andMap (Decode.field "best_before_date" (Decode.nullable Decode.string))
         |> andMap (Decode.field "ingredients" Decode.string)
 
 

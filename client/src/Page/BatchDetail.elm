@@ -272,12 +272,24 @@ viewBatchHeader batch frozenCount =
             [ div []
                 [ h1 [ class "text-2xl font-bold text-gray-800" ] [ text batch.name ]
                 , p [ class "text-gray-600 mt-1" ]
-                    [ span [ class "inline-block bg-frost-100 text-frost-700 px-2 py-1 rounded text-sm mr-2" ]
-                        [ text batch.categoryId ]
-                    , text batch.containerId
-                    ]
+                    [ text batch.containerId ]
+                , if batch.ingredients /= "" then
+                    p [ class "text-gray-500 mt-1 text-sm" ]
+                        [ span [ class "font-medium" ] [ text "Ingredientes: " ]
+                        , text batch.ingredients
+                        ]
+
+                  else
+                    text ""
                 , p [ class "text-gray-500 mt-2" ]
                     [ text ("Caduca: " ++ batch.expiryDate) ]
+                , case batch.bestBeforeDate of
+                    Just bbDate ->
+                        p [ class "text-gray-500 text-sm" ]
+                            [ text ("Consumo preferente: " ++ bbDate) ]
+
+                    Nothing ->
+                        text ""
                 ]
             , if frozenCount > 0 then
                 button

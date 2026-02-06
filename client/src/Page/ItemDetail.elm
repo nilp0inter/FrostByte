@@ -143,10 +143,20 @@ view model =
 viewDetails : PortionDetail -> Html Msg
 viewDetails portion =
     div [ class "mt-6 space-y-3 text-left" ]
-        [ detailRow "Categoría" portion.categoryId
+        [ if portion.ingredients /= "" then
+            detailRow "Ingredientes" portion.ingredients
+
+          else
+            text ""
         , detailRow "Envase" portion.containerId
         , detailRow "Congelado" portion.createdAt
         , detailRow "Caduca" portion.expiryDate
+        , case portion.bestBeforeDate of
+            Just bbDate ->
+                detailRow "Consumo preferente" bbDate
+
+            Nothing ->
+                text ""
         , div [ class "flex justify-between py-2" ]
             [ span [ class "text-gray-500" ] [ text "Estado" ]
             , span

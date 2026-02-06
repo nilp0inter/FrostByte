@@ -2,10 +2,14 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Category table: defines food categories and their freezer shelf life
-CREATE TABLE category (
-    name TEXT PRIMARY KEY,
-    safe_days INTEGER NOT NULL
+-- Enable citext extension for case-insensitive text
+CREATE EXTENSION IF NOT EXISTS citext;
+
+-- Ingredient table: defines ingredients with optional shelf life info
+CREATE TABLE ingredient (
+    name CITEXT PRIMARY KEY,
+    expire_days INTEGER NULL,       -- days until unsafe
+    best_before_days INTEGER NULL   -- days until quality degrades
 );
 
 -- Container type table: defines container types and their serving sizes
@@ -18,10 +22,16 @@ CREATE TABLE container_type (
 CREATE TABLE batch (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    category_id TEXT NOT NULL REFERENCES category(name),
     container_id TEXT NOT NULL REFERENCES container_type(name),
-    ingredients TEXT NOT NULL DEFAULT '',
+    best_before_date DATE NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Junction table for batch-ingredient relationship
+CREATE TABLE batch_ingredient (
+    batch_id UUID NOT NULL REFERENCES batch(id) ON DELETE CASCADE,
+    ingredient_name CITEXT NOT NULL REFERENCES ingredient(name) ON UPDATE CASCADE,
+    PRIMARY KEY (batch_id, ingredient_name)
 );
 
 -- Portion table: individual frozen items (one per physical container/label)
@@ -50,11 +60,11 @@ CREATE OR REPLACE FUNCTION create_batch(
     p_batch_id UUID,
     p_portion_ids UUID[],
     p_name TEXT,
-    p_category_id TEXT,
+    p_ingredient_names TEXT[],
     p_container_id TEXT,
-    p_ingredients TEXT DEFAULT '',
     p_created_at DATE DEFAULT CURRENT_DATE,
-    p_expiry_date DATE DEFAULT NULL
+    p_expiry_date DATE DEFAULT NULL,
+    p_best_before_date DATE DEFAULT NULL
 )
 RETURNS TABLE (
     batch_id UUID,
@@ -64,18 +74,55 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_expiry DATE;
+    v_best_before DATE;
+    v_ingredient_name TEXT;
+    v_min_expire_days INTEGER;
+    v_min_best_before_days INTEGER;
 BEGIN
+    -- Auto-create unknown ingredients with NULL expire/best_before
+    FOREACH v_ingredient_name IN ARRAY p_ingredient_names
+    LOOP
+        INSERT INTO ingredient (name)
+        VALUES (LOWER(v_ingredient_name))
+        ON CONFLICT (name) DO NOTHING;
+    END LOOP;
+
+    -- Get minimum expire_days from ingredients
+    SELECT MIN(expire_days) INTO v_min_expire_days
+    FROM ingredient
+    WHERE name = ANY(SELECT LOWER(unnest(p_ingredient_names)));
+
+    -- Get minimum best_before_days from ingredients
+    SELECT MIN(best_before_days) INTO v_min_best_before_days
+    FROM ingredient
+    WHERE name = ANY(SELECT LOWER(unnest(p_ingredient_names)));
+
     -- Calculate expiry if not provided
-    IF p_expiry_date IS NULL THEN
-        SELECT p_created_at + c.safe_days INTO v_expiry
-        FROM category c WHERE c.name = p_category_id;
-    ELSE
+    IF p_expiry_date IS NOT NULL THEN
         v_expiry := p_expiry_date;
+    ELSIF v_min_expire_days IS NOT NULL THEN
+        v_expiry := p_created_at + v_min_expire_days;
+    ELSE
+        -- No ingredient has expire_days and no manual expiry provided - error
+        RAISE EXCEPTION 'Expiry date required: no ingredient has expire_days defined';
+    END IF;
+
+    -- Calculate best_before if not provided
+    IF p_best_before_date IS NOT NULL THEN
+        v_best_before := p_best_before_date;
+    ELSIF v_min_best_before_days IS NOT NULL THEN
+        v_best_before := p_created_at + v_min_best_before_days;
+    ELSE
+        v_best_before := NULL;
     END IF;
 
     -- Create batch with client-provided UUID
-    INSERT INTO batch (id, name, category_id, container_id, ingredients)
-    VALUES (p_batch_id, p_name, p_category_id, p_container_id, p_ingredients);
+    INSERT INTO batch (id, name, container_id, best_before_date)
+    VALUES (p_batch_id, p_name, p_container_id, v_best_before);
+
+    -- Link ingredients to batch
+    INSERT INTO batch_ingredient (batch_id, ingredient_name)
+    SELECT p_batch_id, LOWER(unnest(p_ingredient_names));
 
     -- Create portions with client-provided UUIDs
     INSERT INTO portion (id, batch_id, created_at, expiry_date)
@@ -90,17 +137,22 @@ CREATE VIEW batch_summary AS
 SELECT
     b.id AS batch_id,
     b.name,
-    b.category_id,
     b.container_id,
-    b.ingredients,
+    b.best_before_date,
     b.created_at AS batch_created_at,
     MIN(p.expiry_date) AS expiry_date,
     COUNT(*) FILTER (WHERE p.status = 'FROZEN') AS frozen_count,
     COUNT(*) FILTER (WHERE p.status = 'CONSUMED') AS consumed_count,
-    COUNT(*) AS total_count
+    COUNT(*) AS total_count,
+    COALESCE(
+        (SELECT string_agg(bi.ingredient_name::TEXT, ', ' ORDER BY bi.ingredient_name)
+         FROM batch_ingredient bi
+         WHERE bi.batch_id = b.id),
+        ''
+    ) AS ingredients
 FROM batch b
 JOIN portion p ON p.batch_id = b.id
-GROUP BY b.id, b.name, b.category_id, b.container_id, b.ingredients, b.created_at;
+GROUP BY b.id, b.name, b.container_id, b.best_before_date, b.created_at;
 
 -- View for portion details including batch info (for QR scan page)
 CREATE VIEW portion_detail AS
@@ -112,9 +164,14 @@ SELECT
     p.status,
     p.consumed_at,
     b.name,
-    b.category_id,
     b.container_id,
-    b.ingredients
+    b.best_before_date,
+    COALESCE(
+        (SELECT string_agg(bi.ingredient_name::TEXT, ', ' ORDER BY bi.ingredient_name)
+         FROM batch_ingredient bi
+         WHERE bi.batch_id = b.id),
+        ''
+    ) AS ingredients
 FROM portion p
 JOIN batch b ON b.id = p.batch_id;
 
@@ -146,3 +203,22 @@ SELECT
     SUM(added - consumed) OVER (ORDER BY date) AS frozen_total
 FROM aggregated
 ORDER BY date;
+
+-- Seed data: common ingredients with expiry info (migrated from old categories)
+INSERT INTO ingredient (name, expire_days, best_before_days) VALUES
+    ('arroz', 120, 90),
+    ('pollo', 365, 270),
+    ('verduras', 240, 180),
+    ('carne', 365, 270),
+    ('pescado', 180, 120),
+    ('legumbres', 365, 300),
+    ('pasta', 180, 120),
+    ('pan', 90, 60),
+    ('caldo', 120, 90);
+
+-- Seed data: container types
+INSERT INTO container_type (name, servings_per_unit) VALUES
+    ('Bolsa 1L', 2),
+    ('Tupper pequeño', 1),
+    ('Tupper mediano', 2),
+    ('Tupper grande', 4);

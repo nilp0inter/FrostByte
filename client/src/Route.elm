@@ -15,6 +15,7 @@ type Route
     | BatchDetail String
     | History
     | ContainerTypes
+    | Ingredients
     | NotFound
 
 
@@ -32,4 +33,5 @@ routeParser =
         , Parser.map BatchDetail (Parser.s "batch" </> Parser.string)
         , Parser.map History (Parser.s "history")
         , Parser.map ContainerTypes (Parser.s "containers")
+        , Parser.map Ingredients (Parser.s "ingredients")
         ]

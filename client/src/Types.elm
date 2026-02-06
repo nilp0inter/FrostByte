@@ -2,20 +2,23 @@ module Types exposing
     ( BatchDetailData
     , BatchForm
     , BatchSummary
-    , Category
     , ContainerType
     , ContainerTypeForm
     , CreateBatchResponse
     , Flags
     , HistoryPoint
+    , Ingredient
+    , IngredientForm
     , Notification
     , NotificationType(..)
     , PortionDetail
     , PortionInBatch
     , PortionPrintData
     , PrintingProgress
+    , SelectedIngredient
     , emptyBatchForm
     , emptyContainerTypeForm
+    , emptyIngredientForm
     )
 
 
@@ -27,14 +30,14 @@ type alias Flags =
 type alias BatchSummary =
     { batchId : String
     , name : String
-    , categoryId : String
     , containerId : String
-    , ingredients : String
+    , bestBeforeDate : Maybe String
     , batchCreatedAt : String
     , expiryDate : String
     , frozenCount : Int
     , consumedCount : Int
     , totalCount : Int
+    , ingredients : String
     }
 
 
@@ -46,15 +49,30 @@ type alias PortionDetail =
     , status : String
     , consumedAt : Maybe String
     , name : String
-    , categoryId : String
     , containerId : String
+    , bestBeforeDate : Maybe String
     , ingredients : String
     }
 
 
-type alias Category =
+type alias Ingredient =
     { name : String
-    , safeDays : Int
+    , expireDays : Maybe Int
+    , bestBeforeDays : Maybe Int
+    }
+
+
+type alias IngredientForm =
+    { name : String
+    , expireDays : String
+    , bestBeforeDays : String
+    , editing : Maybe String
+    }
+
+
+type alias SelectedIngredient =
+    { name : String
+    , isNew : Bool
     }
 
 
@@ -73,9 +91,9 @@ type alias ContainerTypeForm =
 
 type alias BatchForm =
     { name : String
-    , categoryId : String
+    , selectedIngredients : List SelectedIngredient
+    , ingredientInput : String
     , containerId : String
-    , ingredients : String
     , quantity : String
     , createdAt : String
     , expiryDate : String
@@ -142,9 +160,9 @@ type alias PortionPrintData =
 emptyBatchForm : String -> BatchForm
 emptyBatchForm currentDate =
     { name = ""
-    , categoryId = ""
+    , selectedIngredients = []
+    , ingredientInput = ""
     , containerId = ""
-    , ingredients = ""
     , quantity = "1"
     , createdAt = currentDate
     , expiryDate = ""
@@ -155,5 +173,14 @@ emptyContainerTypeForm : ContainerTypeForm
 emptyContainerTypeForm =
     { name = ""
     , servingsPerUnit = ""
+    , editing = Nothing
+    }
+
+
+emptyIngredientForm : IngredientForm
+emptyIngredientForm =
+    { name = ""
+    , expireDays = ""
+    , bestBeforeDays = ""
     , editing = Nothing
     }

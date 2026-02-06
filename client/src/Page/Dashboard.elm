@@ -95,6 +95,13 @@ viewBatchesTable model navigateMsg =
                         |> Maybe.withDefault 1.0
             in
             toFloat batch.frozenCount * container
+
+        truncateIngredients ingredients =
+            if String.length ingredients > 30 then
+                String.left 27 ingredients ++ "..."
+
+            else
+                ingredients
     in
     div [ class "card overflow-hidden" ]
         [ div [ class "overflow-x-auto" ]
@@ -102,7 +109,7 @@ viewBatchesTable model navigateMsg =
                 [ thead [ class "bg-gray-50" ]
                     [ tr []
                         [ th [ class "px-4 py-3 text-left text-sm font-semibold text-gray-600" ] [ text "Nombre" ]
-                        , th [ class "px-4 py-3 text-left text-sm font-semibold text-gray-600" ] [ text "Categoría" ]
+                        , th [ class "px-4 py-3 text-left text-sm font-semibold text-gray-600" ] [ text "Ingredientes" ]
                         , th [ class "px-4 py-3 text-left text-sm font-semibold text-gray-600" ] [ text "Envase" ]
                         , th [ class "px-4 py-3 text-left text-sm font-semibold text-gray-600" ] [ text "Congeladas" ]
                         , th [ class "px-4 py-3 text-left text-sm font-semibold text-gray-600" ] [ text "Raciones" ]
@@ -117,9 +124,9 @@ viewBatchesTable model navigateMsg =
                                 , onClick (navigateMsg batch.batchId)
                                 ]
                                 [ td [ class "px-4 py-3 font-medium text-gray-900" ] [ text batch.name ]
-                                , td [ class "px-4 py-3 text-gray-600" ]
-                                    [ span [ class "inline-block bg-frost-100 text-frost-700 px-2 py-1 rounded text-sm" ]
-                                        [ text batch.categoryId ]
+                                , td [ class "px-4 py-3 text-gray-600 text-sm" ]
+                                    [ span [ class "text-gray-500" ]
+                                        [ text (truncateIngredients batch.ingredients) ]
                                     ]
                                 , td [ class "px-4 py-3 text-gray-600 text-sm" ] [ text batch.containerId ]
                                 , td [ class "px-4 py-3 text-gray-600" ]

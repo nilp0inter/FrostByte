@@ -1,17 +1,12 @@
 -- FrostByte Seed Data
--- Categories with their freezer shelf life in days
-INSERT INTO category (name, safe_days) VALUES
-    ('Arroz', 120),
-    ('Pescado', 180),
-    ('Marisco', 180),
-    ('Ternera', 365),
-    ('Pollo', 365),
-    ('Cerdo', 365),
-    ('Guiso', 365),
-    ('Legumbres', 365),
-    ('Verdura', 365),
-    ('Salsa', 365),
-    ('Postre', 90)
+-- Additional Ingredients with their freezer shelf life in days
+INSERT INTO ingredient (name, expire_days, best_before_days) VALUES
+    ('marisco', 180, 120),
+    ('ternera', 365, 270),
+    ('cerdo', 365, 270),
+    ('guiso', 365, 300),
+    ('postre', 90, 60),
+    ('salsa', 365, 300)
 ON CONFLICT (name) DO NOTHING;
 
 -- Container types with servings per unit

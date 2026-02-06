@@ -11,6 +11,7 @@ import Page.BatchDetail as BatchDetail
 import Page.ContainerTypes as ContainerTypes
 import Page.Dashboard as Dashboard
 import Page.History as History
+import Page.Ingredients as Ingredients
 import Page.ItemDetail as ItemDetail
 import Page.NewBatch as NewBatch
 import Page.NotFound as NotFound
@@ -44,7 +45,7 @@ type alias Model =
     , url : Url.Url
     , route : Route
     , currentDate : String
-    , categories : List Category
+    , ingredients : List Ingredient
     , containerTypes : List ContainerType
     , batches : List BatchSummary
     , page : Page
@@ -61,6 +62,7 @@ type Page
     | BatchDetailPage BatchDetail.Model
     | HistoryPage History.Model
     | ContainerTypesPage ContainerTypes.Model
+    | IngredientsPage Ingredients.Model
     | NotFoundPage
 
 
@@ -75,7 +77,7 @@ init flags url key =
             , url = url
             , route = route
             , currentDate = flags.currentDate
-            , categories = []
+            , ingredients = []
             , containerTypes = []
             , batches = []
             , page = NotFoundPage
@@ -86,7 +88,7 @@ init flags url key =
     in
     ( model
     , Cmd.batch
-        [ Api.fetchCategories GotCategories
+        [ Api.fetchIngredients GotIngredients
         , Api.fetchContainerTypes GotContainerTypes
         , Api.fetchBatches GotBatches
         ]
@@ -108,7 +110,7 @@ initPage route model =
         NewBatch ->
             let
                 ( pageModel, pageCmd ) =
-                    NewBatch.init model.currentDate model.categories model.containerTypes
+                    NewBatch.init model.currentDate model.ingredients model.containerTypes
             in
             ( { model | page = NewBatchPage pageModel }
             , Cmd.map NewBatchMsg pageCmd
@@ -150,6 +152,15 @@ initPage route model =
             , Cmd.map ContainerTypesMsg pageCmd
             )
 
+        Route.Ingredients ->
+            let
+                ( pageModel, pageCmd ) =
+                    Ingredients.init model.ingredients
+            in
+            ( { model | page = IngredientsPage pageModel }
+            , Cmd.map IngredientsMsg pageCmd
+            )
+
         NotFound ->
             ( { model | page = NotFoundPage }, Cmd.none )
 
@@ -161,7 +172,7 @@ initPage route model =
 type Msg
     = LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
-    | GotCategories (Result Http.Error (List Category))
+    | GotIngredients (Result Http.Error (List Ingredient))
     | GotContainerTypes (Result Http.Error (List ContainerType))
     | GotBatches (Result Http.Error (List BatchSummary))
     | DashboardMsg Dashboard.Msg
@@ -170,6 +181,7 @@ type Msg
     | BatchDetailMsg BatchDetail.Msg
     | HistoryMsg History.Msg
     | ContainerTypesMsg ContainerTypes.Msg
+    | IngredientsMsg Ingredients.Msg
     | DismissNotification
     | NavigateToBatch String
 
@@ -195,17 +207,17 @@ update msg model =
             in
             initPage route newModel
 
-        GotCategories result ->
+        GotIngredients result ->
             case result of
-                Ok categories ->
+                Ok ingredients ->
                     let
                         newModel =
-                            { model | categories = categories }
+                            { model | ingredients = ingredients }
                     in
                     maybeInitPage newModel
 
                 Err _ ->
-                    ( { model | notification = Just { message = "Failed to load categories", notificationType = Error } }
+                    ( { model | notification = Just { message = "Failed to load ingredients", notificationType = Error } }
                     , Cmd.none
                     )
 
@@ -339,6 +351,21 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        IngredientsMsg subMsg ->
+            case model.page of
+                IngredientsPage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            Ingredients.update subMsg pageModel
+
+                        newModel =
+                            { model | page = IngredientsPage newPageModel }
+                    in
+                    handleIngredientsOutMsg outMsg newModel pageCmd
+
+                _ ->
+                    ( model, Cmd.none )
+
         DismissNotification ->
             ( { model | notification = Nothing }, Cmd.none )
 
@@ -348,7 +375,7 @@ update msg model =
 
 maybeInitPage : Model -> ( Model, Cmd Msg )
 maybeInitPage model =
-    if not (List.isEmpty model.categories) && not (List.isEmpty model.containerTypes) then
+    if not (List.isEmpty model.ingredients) && not (List.isEmpty model.containerTypes) then
         case model.page of
             NotFoundPage ->
                 initPage model.route model
@@ -412,6 +439,7 @@ handleNewBatchOutMsg outMsg model pageCmd =
             , Cmd.batch
                 [ Cmd.map NewBatchMsg pageCmd
                 , Api.fetchBatches GotBatches
+                , Api.fetchIngredients GotIngredients
                 ]
             )
 
@@ -472,6 +500,26 @@ handleContainerTypesOutMsg outMsg model pageCmd =
             )
 
 
+handleIngredientsOutMsg : Ingredients.OutMsg -> Model -> Cmd Ingredients.Msg -> ( Model, Cmd Msg )
+handleIngredientsOutMsg outMsg model pageCmd =
+    case outMsg of
+        Ingredients.NoOp ->
+            ( model, Cmd.map IngredientsMsg pageCmd )
+
+        Ingredients.ShowNotification notification ->
+            ( { model | notification = Just notification }
+            , Cmd.map IngredientsMsg pageCmd
+            )
+
+        Ingredients.RefreshIngredients ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map IngredientsMsg pageCmd
+                , Api.fetchIngredients GotIngredients
+                ]
+            )
+
+
 
 -- SUBSCRIPTIONS
 
@@ -525,6 +573,9 @@ viewPage model =
 
         ContainerTypesPage pageModel ->
             Html.map ContainerTypesMsg (ContainerTypes.view pageModel)
+
+        IngredientsPage pageModel ->
+            Html.map IngredientsMsg (Ingredients.view pageModel)
 
         NotFoundPage ->
             NotFound.view
