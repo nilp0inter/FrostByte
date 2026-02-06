@@ -4,6 +4,7 @@ module Api.Decoders exposing
     , createBatchResponseDecoder
     , historyPointDecoder
     , ingredientDecoder
+    , labelPresetDecoder
     , portionDetailDecoder
     , portionInBatchDecoder
     , recipeDecoder
@@ -98,3 +99,17 @@ recipeDecoder =
         (Decode.field "default_portions" Decode.int)
         (Decode.field "default_container_id" (Decode.nullable Decode.string))
         (Decode.field "ingredients" Decode.string)
+
+
+labelPresetDecoder : Decoder LabelPreset
+labelPresetDecoder =
+    Decode.succeed LabelPreset
+        |> andMap (Decode.field "name" Decode.string)
+        |> andMap (Decode.field "width" Decode.int)
+        |> andMap (Decode.field "height" Decode.int)
+        |> andMap (Decode.field "qr_size" Decode.int)
+        |> andMap (Decode.field "padding" Decode.int)
+        |> andMap (Decode.field "title_font_size" Decode.int)
+        |> andMap (Decode.field "date_font_size" Decode.int)
+        |> andMap (Decode.field "small_font_size" Decode.int)
+        |> andMap (Decode.field "font_family" Decode.string)

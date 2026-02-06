@@ -3,6 +3,8 @@ module Api.Encoders exposing
     , encodeConsumeRequest
     , encodeContainerType
     , encodeIngredient
+    , encodeLabelPreset
+    , encodePrintPngRequest
     , encodePrintRequest
     , encodeRecipeRequest
     , encodeReturnToFreezerRequest
@@ -129,3 +131,25 @@ encodeRecipeRequest form =
                     baseFields
     in
     Encode.object fields
+
+
+encodeLabelPreset : LabelPresetForm -> Encode.Value
+encodeLabelPreset form =
+    Encode.object
+        [ ( "name", Encode.string form.name )
+        , ( "width", Encode.int (Maybe.withDefault 696 (String.toInt form.width)) )
+        , ( "height", Encode.int (Maybe.withDefault 300 (String.toInt form.height)) )
+        , ( "qr_size", Encode.int (Maybe.withDefault 200 (String.toInt form.qrSize)) )
+        , ( "padding", Encode.int (Maybe.withDefault 20 (String.toInt form.padding)) )
+        , ( "title_font_size", Encode.int (Maybe.withDefault 48 (String.toInt form.titleFontSize)) )
+        , ( "date_font_size", Encode.int (Maybe.withDefault 32 (String.toInt form.dateFontSize)) )
+        , ( "small_font_size", Encode.int (Maybe.withDefault 18 (String.toInt form.smallFontSize)) )
+        , ( "font_family", Encode.string form.fontFamily )
+        ]
+
+
+encodePrintPngRequest : String -> Encode.Value
+encodePrintPngRequest pngBase64 =
+    Encode.object
+        [ ( "image_data", Encode.string pngBase64 )
+        ]

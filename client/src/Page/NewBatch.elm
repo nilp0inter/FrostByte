@@ -1,6 +1,6 @@
 module Page.NewBatch exposing
     ( Model
-    , Msg
+    , Msg(..)
     , OutMsg(..)
     , init
     , update
@@ -13,6 +13,8 @@ import Html.Attributes as Attr exposing (class, disabled, href, id, placeholder,
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Http
 import Json.Decode as Decode
+import Label
+import Ports
 import Random
 import Types exposing (..)
 import UUID exposing (UUID)
@@ -23,12 +25,17 @@ type alias Model =
     , ingredients : List Ingredient
     , containerTypes : List ContainerType
     , recipes : List Recipe
+    , labelPresets : List LabelPreset
+    , selectedPreset : Maybe LabelPreset
+    , appHost : String
     , loading : Bool
     , printWithSave : Bool
     , printingProgress : Maybe PrintingProgress
     , showSuggestions : Bool
     , showRecipeSuggestions : Bool
     , expiryRequired : Bool
+    , pendingPrintData : List PortionPrintData
+    , pendingPngRequests : List String
     }
 
 
@@ -45,11 +52,13 @@ type Msg
     | SubmitBatchWithPrint
     | GotUuidsForBatch (List UUID)
     | BatchCreated (Result Http.Error CreateBatchResponse)
-    | PrintResult String (Result Http.Error ())
+    | PrintResult (Result Http.Error ())
     | HideSuggestions
     | HideRecipeSuggestions
     | IngredientKeyDown String
     | SelectRecipe Recipe
+    | SelectPreset String
+    | GotPngResult Ports.PngResult
 
 
 type OutMsg
@@ -58,10 +67,11 @@ type OutMsg
     | NavigateToHome
     | NavigateToBatch String
     | RefreshBatches
+    | RequestSvgToPng Ports.SvgToPngRequest
 
 
-init : String -> List Ingredient -> List ContainerType -> List Recipe -> ( Model, Cmd Msg )
-init currentDate ingredients containerTypes recipes =
+init : String -> String -> List Ingredient -> List ContainerType -> List Recipe -> List LabelPreset -> ( Model, Cmd Msg )
+init currentDate appHost ingredients containerTypes recipes labelPresets =
     let
         form =
             emptyBatchForm currentDate
@@ -73,17 +83,25 @@ init currentDate ingredients containerTypes recipes =
                         |> Maybe.map .name
                         |> Maybe.withDefault ""
             }
+
+        defaultPreset =
+            List.head labelPresets
     in
     ( { form = formWithDefaults
       , ingredients = ingredients
       , containerTypes = containerTypes
       , recipes = recipes
+      , labelPresets = labelPresets
+      , selectedPreset = defaultPreset
+      , appHost = appHost
       , loading = False
       , printWithSave = True
       , printingProgress = Nothing
       , showSuggestions = False
       , showRecipeSuggestions = False
       , expiryRequired = False
+      , pendingPrintData = []
+      , pendingPngRequests = []
       }
     , Cmd.none
     )
@@ -308,20 +326,39 @@ update msg model =
                                     )
                                     response.portionIds
 
-                            printCommands =
-                                List.map (\data -> Api.printLabel data PrintResult) printData
-
                             currentDate =
                                 model.form.createdAt
+
+                            -- Start SVG→PNG conversion for the first label
+                            -- The rest will be triggered after each conversion completes
+                            firstRequest =
+                                case ( List.head printData, model.selectedPreset ) of
+                                    ( Just firstData, Just preset ) ->
+                                        Just
+                                            { svgId = Label.labelSvgId firstData.portionId
+                                            , requestId = firstData.portionId
+                                            , width = preset.width
+                                            , height = preset.height
+                                            }
+
+                                    _ ->
+                                        Nothing
                         in
                         ( { model
                             | form = emptyBatchForm currentDate
                             , loading = False
                             , printingProgress = Just { total = quantity, completed = 0, failed = 0 }
                             , expiryRequired = False
+                            , pendingPrintData = printData
+                            , pendingPngRequests = List.map .portionId printData
                           }
-                        , Cmd.batch printCommands
-                        , NavigateToHome
+                        , Cmd.none
+                        , case firstRequest of
+                            Just req ->
+                                RequestSvgToPng req
+
+                            Nothing ->
+                                ShowNotification { message = "No label preset selected", notificationType = Error }
                         )
 
                     else
@@ -340,7 +377,7 @@ update msg model =
                     , ShowNotification { message = "Error al crear lote. Verifica que los ingredientes tienen días de caducidad o especifica una fecha manual.", notificationType = Error }
                     )
 
-        PrintResult _ result ->
+        PrintResult result ->
             let
                 updateProgress progress =
                     case result of
@@ -366,10 +403,10 @@ update msg model =
                         case newProgress of
                             Just p ->
                                 if p.failed > 0 then
-                                    ShowNotification { message = String.fromInt p.completed ++ " labels printed, " ++ String.fromInt p.failed ++ " failed", notificationType = Error }
+                                    ShowNotification { message = String.fromInt p.completed ++ " etiquetas impresas, " ++ String.fromInt p.failed ++ " fallidas", notificationType = Error }
 
                                 else
-                                    ShowNotification { message = String.fromInt p.completed ++ " labels printed successfully!", notificationType = Success }
+                                    ShowNotification { message = String.fromInt p.completed ++ " etiquetas impresas correctamente!", notificationType = Success }
 
                             Nothing ->
                                 NoOp
@@ -392,6 +429,111 @@ update msg model =
               else
                 outMsg
             )
+
+        SelectPreset presetName ->
+            let
+                maybePreset =
+                    List.filter (\p -> p.name == presetName) model.labelPresets
+                        |> List.head
+            in
+            ( { model | selectedPreset = maybePreset }, Cmd.none, NoOp )
+
+        GotPngResult result ->
+            case result.dataUrl of
+                Just dataUrl ->
+                    let
+                        -- Strip the data:image/png;base64, prefix
+                        base64Data =
+                            String.replace "data:image/png;base64," "" dataUrl
+
+                        -- Remove this request from pending
+                        remainingRequests =
+                            List.filter (\id -> id /= result.requestId) model.pendingPngRequests
+
+                        -- Find next pending print data to convert
+                        nextRequest =
+                            case ( List.head remainingRequests, model.selectedPreset ) of
+                                ( Just nextId, Just preset ) ->
+                                    Just
+                                        { svgId = Label.labelSvgId nextId
+                                        , requestId = nextId
+                                        , width = preset.width
+                                        , height = preset.height
+                                        }
+
+                                _ ->
+                                    Nothing
+                    in
+                    ( { model | pendingPngRequests = remainingRequests }
+                    , Api.printLabelPng base64Data PrintResult
+                    , case nextRequest of
+                        Just req ->
+                            RequestSvgToPng req
+
+                        Nothing ->
+                            NoOp
+                    )
+
+                Nothing ->
+                    -- PNG conversion failed
+                    let
+                        errorMsg =
+                            Maybe.withDefault "Unknown error" result.error
+
+                        updateProgress progress =
+                            { progress | failed = progress.failed + 1 }
+
+                        newProgress =
+                            Maybe.map updateProgress model.printingProgress
+
+                        remainingRequests =
+                            List.filter (\id -> id /= result.requestId) model.pendingPngRequests
+
+                        allDone =
+                            case newProgress of
+                                Just p ->
+                                    p.completed + p.failed >= p.total
+
+                                Nothing ->
+                                    True
+
+                        finalProgress =
+                            if allDone then
+                                Nothing
+
+                            else
+                                newProgress
+
+                        -- Try next conversion even if this one failed
+                        nextRequest =
+                            case ( List.head remainingRequests, model.selectedPreset ) of
+                                ( Just nextId, Just preset ) ->
+                                    Just
+                                        { svgId = Label.labelSvgId nextId
+                                        , requestId = nextId
+                                        , width = preset.width
+                                        , height = preset.height
+                                        }
+
+                                _ ->
+                                    Nothing
+                    in
+                    ( { model
+                        | pendingPngRequests = remainingRequests
+                        , printingProgress = finalProgress
+                      }
+                    , Cmd.none
+                    , case nextRequest of
+                        Just req ->
+                            RequestSvgToPng req
+
+                        Nothing ->
+                            if allDone then
+                                RefreshBatches
+
+                            else
+                                NoOp
+                    )
 
         HideSuggestions ->
             ( { model | showSuggestions = False }, Cmd.none, NoOp )
@@ -563,6 +705,7 @@ view model =
                             ]
                         ]
                     ]
+                , viewPresetSelector model
                 , div [ class "flex justify-end space-x-4 pt-4" ]
                     [ a [ href "/", class "btn-secondary" ] [ text "Cancelar" ]
                     , button
@@ -591,7 +734,72 @@ view model =
                     ]
                 ]
             ]
+        , viewHiddenLabels model
         ]
+
+
+viewPresetSelector : Model -> Html Msg
+viewPresetSelector model =
+    div []
+        [ label [ class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Tamaño de Etiqueta" ]
+        , select
+            [ class "input-field"
+            , onInput SelectPreset
+            , value (Maybe.map .name model.selectedPreset |> Maybe.withDefault "")
+            ]
+            (List.map
+                (\preset ->
+                    option
+                        [ value preset.name
+                        , selected (Maybe.map .name model.selectedPreset == Just preset.name)
+                        ]
+                        [ text (preset.name ++ " (" ++ String.fromInt preset.width ++ "×" ++ String.fromInt preset.height ++ ")") ]
+                )
+                model.labelPresets
+            )
+        ]
+
+
+{-| Render hidden SVG labels for pending print jobs.
+These are rendered off-screen and used for SVG→PNG conversion.
+-}
+viewHiddenLabels : Model -> Html Msg
+viewHiddenLabels model =
+    case model.selectedPreset of
+        Just preset ->
+            let
+                labelSettings =
+                    { name = preset.name
+                    , width = preset.width
+                    , height = preset.height
+                    , qrSize = preset.qrSize
+                    , padding = preset.padding
+                    , titleFontSize = preset.titleFontSize
+                    , dateFontSize = preset.dateFontSize
+                    , smallFontSize = preset.smallFontSize
+                    , fontFamily = preset.fontFamily
+                    }
+            in
+            div
+                [ Attr.style "position" "absolute"
+                , Attr.style "left" "-9999px"
+                , Attr.style "top" "-9999px"
+                ]
+                (List.map
+                    (\printData ->
+                        Label.viewLabel labelSettings
+                            { portionId = printData.portionId
+                            , name = printData.name
+                            , ingredients = printData.ingredients
+                            , expiryDate = printData.expiryDate
+                            , appHost = model.appHost
+                            }
+                    )
+                    model.pendingPrintData
+                )
+
+        Nothing ->
+            text ""
 
 
 viewIngredientSelector : Model -> Html Msg

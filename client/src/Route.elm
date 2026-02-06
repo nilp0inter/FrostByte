@@ -17,6 +17,7 @@ type Route
     | ContainerTypes
     | Ingredients
     | Recipes
+    | LabelDesigner
     | NotFound
 
 
@@ -36,4 +37,5 @@ routeParser =
         , Parser.map ContainerTypes (Parser.s "containers")
         , Parser.map Ingredients (Parser.s "ingredients")
         , Parser.map Recipes (Parser.s "recipes")
+        , Parser.map LabelDesigner (Parser.s "labels")
         ]

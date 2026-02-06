@@ -3,18 +3,22 @@ module Api exposing
     , createBatch
     , deleteContainerType
     , deleteIngredient
+    , deleteLabelPreset
     , deleteRecipe
     , fetchBatchPortions
     , fetchBatches
     , fetchContainerTypes
     , fetchHistory
     , fetchIngredients
+    , fetchLabelPresets
     , fetchPortionDetail
     , fetchRecipes
     , printLabel
+    , printLabelPng
     , returnPortionToFreezer
     , saveContainerType
     , saveIngredient
+    , saveLabelPreset
     , saveRecipe
     )
 
@@ -216,4 +220,56 @@ deleteRecipe name toMsg =
         , expect = Http.expectWhatever toMsg
         , timeout = Nothing
         , tracker = Nothing
+        }
+
+
+fetchLabelPresets : (Result Http.Error (List LabelPreset) -> msg) -> Cmd msg
+fetchLabelPresets toMsg =
+    Http.get
+        { url = "/api/db/label_preset?order=name.asc"
+        , expect = Http.expectJson toMsg (Decode.list labelPresetDecoder)
+        }
+
+
+saveLabelPreset : LabelPresetForm -> (Result Http.Error () -> msg) -> Cmd msg
+saveLabelPreset form toMsg =
+    let
+        ( method, url ) =
+            case form.editing of
+                Just originalName ->
+                    ( "PATCH", "/api/db/label_preset?name=eq." ++ Url.percentEncode originalName )
+
+                Nothing ->
+                    ( "POST", "/api/db/label_preset" )
+    in
+    Http.request
+        { method = method
+        , headers = []
+        , url = url
+        , body = Http.jsonBody (encodeLabelPreset form)
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+deleteLabelPreset : String -> (Result Http.Error () -> msg) -> Cmd msg
+deleteLabelPreset name toMsg =
+    Http.request
+        { method = "DELETE"
+        , headers = []
+        , url = "/api/db/label_preset?name=eq." ++ Url.percentEncode name
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+printLabelPng : String -> (Result Http.Error () -> msg) -> Cmd msg
+printLabelPng pngBase64 toMsg =
+    Http.post
+        { url = "/api/printer/print"
+        , body = Http.jsonBody (encodePrintPngRequest pngBase64)
+        , expect = Http.expectWhatever toMsg
         }

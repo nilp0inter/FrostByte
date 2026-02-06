@@ -13,9 +13,11 @@ import Page.Dashboard as Dashboard
 import Page.History as History
 import Page.Ingredients as Ingredients
 import Page.ItemDetail as ItemDetail
+import Page.LabelDesigner as LabelDesigner
 import Page.NewBatch as NewBatch
 import Page.NotFound as NotFound
 import Page.Recipes as Recipes
+import Ports
 import Route exposing (Route(..))
 import Types exposing (..)
 import Url
@@ -46,10 +48,12 @@ type alias Model =
     , url : Url.Url
     , route : Route
     , currentDate : String
+    , appHost : String
     , ingredients : List Ingredient
     , containerTypes : List ContainerType
     , batches : List BatchSummary
     , recipes : List Recipe
+    , labelPresets : List LabelPreset
     , page : Page
     , notification : Maybe Notification
     , printingProgress : Maybe PrintingProgress
@@ -66,6 +70,7 @@ type Page
     | ContainerTypesPage ContainerTypes.Model
     | IngredientsPage Ingredients.Model
     | RecipesPage Recipes.Model
+    | LabelDesignerPage LabelDesigner.Model
     | NotFoundPage
 
 
@@ -80,10 +85,12 @@ init flags url key =
             , url = url
             , route = route
             , currentDate = flags.currentDate
+            , appHost = flags.appHost
             , ingredients = []
             , containerTypes = []
             , batches = []
             , recipes = []
+            , labelPresets = []
             , page = NotFoundPage
             , notification = Nothing
             , printingProgress = Nothing
@@ -96,6 +103,7 @@ init flags url key =
         , Api.fetchContainerTypes GotContainerTypes
         , Api.fetchBatches GotBatches
         , Api.fetchRecipes GotRecipes
+        , Api.fetchLabelPresets GotLabelPresets
         ]
     )
 
@@ -115,7 +123,7 @@ initPage route model =
         NewBatch ->
             let
                 ( pageModel, pageCmd ) =
-                    NewBatch.init model.currentDate model.ingredients model.containerTypes model.recipes
+                    NewBatch.init model.currentDate model.appHost model.ingredients model.containerTypes model.recipes model.labelPresets
             in
             ( { model | page = NewBatchPage pageModel }
             , Cmd.map NewBatchMsg pageCmd
@@ -133,7 +141,7 @@ initPage route model =
         BatchDetail batchId ->
             let
                 ( pageModel, pageCmd ) =
-                    BatchDetail.init batchId model.batches
+                    BatchDetail.init batchId model.appHost model.batches model.labelPresets
             in
             ( { model | page = BatchDetailPage pageModel }
             , Cmd.map BatchDetailMsg pageCmd
@@ -175,6 +183,15 @@ initPage route model =
             , Cmd.map RecipesMsg pageCmd
             )
 
+        Route.LabelDesigner ->
+            let
+                ( pageModel, pageCmd ) =
+                    LabelDesigner.init model.appHost model.labelPresets
+            in
+            ( { model | page = LabelDesignerPage pageModel }
+            , Cmd.map LabelDesignerMsg pageCmd
+            )
+
         NotFound ->
             ( { model | page = NotFoundPage }, Cmd.none )
 
@@ -190,6 +207,7 @@ type Msg
     | GotContainerTypes (Result Http.Error (List ContainerType))
     | GotBatches (Result Http.Error (List BatchSummary))
     | GotRecipes (Result Http.Error (List Recipe))
+    | GotLabelPresets (Result Http.Error (List LabelPreset))
     | DashboardMsg Dashboard.Msg
     | NewBatchMsg NewBatch.Msg
     | ItemDetailMsg ItemDetail.Msg
@@ -198,8 +216,10 @@ type Msg
     | ContainerTypesMsg ContainerTypes.Msg
     | IngredientsMsg Ingredients.Msg
     | RecipesMsg Recipes.Msg
+    | LabelDesignerMsg LabelDesigner.Msg
     | DismissNotification
     | NavigateToBatch String
+    | GotPngResult Ports.PngResult
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -282,6 +302,20 @@ update msg model =
 
                 Err _ ->
                     ( { model | notification = Just { message = "Failed to load recipes", notificationType = Error } }
+                    , Cmd.none
+                    )
+
+        GotLabelPresets result ->
+            case result of
+                Ok labelPresets ->
+                    let
+                        newModel =
+                            { model | labelPresets = labelPresets }
+                    in
+                    maybeInitPage newModel
+
+                Err _ ->
+                    ( { model | notification = Just { message = "Failed to load label presets", notificationType = Error } }
                     , Cmd.none
                     )
 
@@ -411,6 +445,33 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        LabelDesignerMsg subMsg ->
+            case model.page of
+                LabelDesignerPage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            LabelDesigner.update subMsg pageModel
+
+                        newModel =
+                            { model | page = LabelDesignerPage newPageModel }
+                    in
+                    handleLabelDesignerOutMsg outMsg newModel pageCmd
+
+                _ ->
+                    ( model, Cmd.none )
+
+        GotPngResult pngResult ->
+            -- Forward PNG results to the active page that handles printing
+            case model.page of
+                NewBatchPage _ ->
+                    update (NewBatchMsg (NewBatch.GotPngResult pngResult)) model
+
+                BatchDetailPage _ ->
+                    update (BatchDetailMsg (BatchDetail.GotPngResult pngResult)) model
+
+                _ ->
+                    ( model, Cmd.none )
+
         DismissNotification ->
             ( { model | notification = Nothing }, Cmd.none )
 
@@ -488,6 +549,14 @@ handleNewBatchOutMsg outMsg model pageCmd =
                 ]
             )
 
+        NewBatch.RequestSvgToPng request ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map NewBatchMsg pageCmd
+                , Ports.requestSvgToPng request
+                ]
+            )
+
 
 handleItemDetailOutMsg : ItemDetail.OutMsg -> Model -> Cmd ItemDetail.Msg -> ( Model, Cmd Msg )
 handleItemDetailOutMsg outMsg model pageCmd =
@@ -518,6 +587,14 @@ handleBatchDetailOutMsg outMsg model pageCmd =
         BatchDetail.ShowNotification notification ->
             ( { model | notification = Just notification }
             , Cmd.map BatchDetailMsg pageCmd
+            )
+
+        BatchDetail.RequestSvgToPng request ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map BatchDetailMsg pageCmd
+                , Ports.requestSvgToPng request
+                ]
             )
 
 
@@ -586,13 +663,33 @@ handleRecipesOutMsg outMsg model pageCmd =
             )
 
 
+handleLabelDesignerOutMsg : LabelDesigner.OutMsg -> Model -> Cmd LabelDesigner.Msg -> ( Model, Cmd Msg )
+handleLabelDesignerOutMsg outMsg model pageCmd =
+    case outMsg of
+        LabelDesigner.NoOp ->
+            ( model, Cmd.map LabelDesignerMsg pageCmd )
+
+        LabelDesigner.ShowNotification notification ->
+            ( { model | notification = Just notification }
+            , Cmd.map LabelDesignerMsg pageCmd
+            )
+
+        LabelDesigner.RefreshPresets ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map LabelDesignerMsg pageCmd
+                , Api.fetchLabelPresets GotLabelPresets
+                ]
+            )
+
+
 
 -- SUBSCRIPTIONS
 
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Sub.none
+    Ports.receivePngResult GotPngResult
 
 
 
@@ -645,6 +742,9 @@ viewPage model =
 
         RecipesPage pageModel ->
             Html.map RecipesMsg (Recipes.view pageModel)
+
+        LabelDesignerPage pageModel ->
+            Html.map LabelDesignerMsg (LabelDesigner.view pageModel)
 
         NotFoundPage ->
             NotFound.view

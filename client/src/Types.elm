@@ -9,6 +9,8 @@ module Types exposing
     , HistoryPoint
     , Ingredient
     , IngredientForm
+    , LabelPreset
+    , LabelPresetForm
     , Notification
     , NotificationType(..)
     , PortionDetail
@@ -21,12 +23,14 @@ module Types exposing
     , emptyBatchForm
     , emptyContainerTypeForm
     , emptyIngredientForm
+    , emptyLabelPresetForm
     , emptyRecipeForm
     )
 
 
 type alias Flags =
     { currentDate : String
+    , appHost : String
     }
 
 
@@ -214,5 +218,47 @@ emptyRecipeForm =
     , ingredientInput = ""
     , defaultPortions = "1"
     , defaultContainerId = ""
+    , editing = Nothing
+    }
+
+
+type alias LabelPreset =
+    { name : String
+    , width : Int
+    , height : Int
+    , qrSize : Int
+    , padding : Int
+    , titleFontSize : Int
+    , dateFontSize : Int
+    , smallFontSize : Int
+    , fontFamily : String
+    }
+
+
+type alias LabelPresetForm =
+    { name : String
+    , width : String
+    , height : String
+    , qrSize : String
+    , padding : String
+    , titleFontSize : String
+    , dateFontSize : String
+    , smallFontSize : String
+    , fontFamily : String
+    , editing : Maybe String
+    }
+
+
+emptyLabelPresetForm : LabelPresetForm
+emptyLabelPresetForm =
+    { name = ""
+    , width = "696"
+    , height = "300"
+    , qrSize = "200"
+    , padding = "20"
+    , titleFontSize = "48"
+    , dateFontSize = "32"
+    , smallFontSize = "18"
+    , fontFamily = "sans-serif"
     , editing = Nothing
     }

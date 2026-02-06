@@ -4,12 +4,14 @@ module Components exposing
     , viewLoading
     , viewNotification
     , viewPreviewModal
+    , viewPreviewModalSvg
     , viewPrintingProgress
     )
 
 import Html exposing (..)
 import Html.Attributes as Attr exposing (class, href, style, title)
 import Html.Events exposing (onClick)
+import Label
 import Route exposing (Route(..))
 import Types exposing (..)
 import Url.Builder
@@ -31,6 +33,7 @@ viewHeader currentRoute =
                     , navLink "/recipes" "Recetas" (currentRoute == Recipes)
                     , navLink "/ingredients" "Ingredientes" (currentRoute == Ingredients)
                     , navLink "/containers" "Envases" (currentRoute == ContainerTypes)
+                    , navLink "/labels" "Etiquetas" (currentRoute == LabelDesigner)
                     ]
                 ]
             ]
@@ -134,6 +137,63 @@ viewPreviewModal maybePreview closeMsg =
                             , class "max-w-full border border-gray-200 rounded shadow-sm"
                             ]
                             []
+                        ]
+                    , div [ class "flex justify-end px-6 py-4 bg-gray-50 border-t" ]
+                        [ button
+                            [ onClick closeMsg
+                            , class "px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium"
+                            ]
+                            [ text "Cerrar" ]
+                        ]
+                    ]
+                ]
+
+        Nothing ->
+            text ""
+
+
+{-| SVG-based preview modal for labels.
+Uses Label.viewLabel to render the label directly instead of fetching from server.
+-}
+viewPreviewModalSvg : Label.LabelSettings -> String -> Maybe PortionPrintData -> msg -> Html msg
+viewPreviewModalSvg settings appHost maybePreview closeMsg =
+    case maybePreview of
+        Just portionData ->
+            let
+                labelData =
+                    { portionId = portionData.portionId
+                    , name = portionData.name
+                    , ingredients = portionData.ingredients
+                    , expiryDate = portionData.expiryDate
+                    , appHost = appHost
+                    }
+
+                -- Scale preview to fit modal
+                previewScale =
+                    min 1.0 (600 / toFloat settings.width)
+            in
+            div [ class "fixed inset-0 z-50 flex items-center justify-center" ]
+                [ div
+                    [ class "absolute inset-0 bg-black bg-opacity-50"
+                    , onClick closeMsg
+                    ]
+                    []
+                , div [ class "relative bg-white rounded-xl shadow-2xl max-w-3xl w-full mx-4 overflow-hidden" ]
+                    [ div [ class "flex justify-between items-center px-6 py-4 border-b" ]
+                        [ h3 [ class "text-lg font-semibold text-gray-800" ]
+                            [ text "Vista previa de etiqueta" ]
+                        , button
+                            [ onClick closeMsg
+                            , class "text-gray-400 hover:text-gray-600 text-2xl font-bold"
+                            ]
+                            [ text "×" ]
+                        ]
+                    , div [ class "p-6 flex justify-center bg-gray-100 overflow-auto" ]
+                        [ div
+                            [ style "transform" ("scale(" ++ String.fromFloat previewScale ++ ")")
+                            , style "transform-origin" "center center"
+                            ]
+                            [ Label.viewLabel settings labelData ]
                         ]
                     , div [ class "flex justify-end px-6 py-4 bg-gray-50 border-t" ]
                         [ button

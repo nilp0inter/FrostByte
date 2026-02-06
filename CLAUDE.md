@@ -36,6 +36,7 @@ docker compose down
 - http://localhost/recipes - Recipe management (reusable batch templates)
 - http://localhost/ingredients - Ingredient management
 - http://localhost/containers - Container type management
+- http://localhost/labels - Label designer (preset management)
 
 ## Installing Elm Packages
 
@@ -68,9 +69,25 @@ FrostByte is an **append-only** home freezer management system. Each physical fo
 
 ### Data Flow
 
-1. **Batch Creation**: User creates a batch via Elm UI → `POST /api/db/rpc/create_batch` → PostgreSQL function creates batch + N portions → Returns `{batch_id, portion_ids[]}` → Client calls printer service for each portion_id
+1. **Batch Creation**: User creates a batch via Elm UI → `POST /api/db/rpc/create_batch` → PostgreSQL function creates batch + N portions → Returns `{batch_id, portion_ids[]}` → Client renders SVG labels → converts to PNG via JS ports → sends to printer service
 2. **QR Scan Consumption**: User scans QR code → `/item/{portion_uuid}` route → Fetches from `portion_detail` view → User confirms → `PATCH /api/db/portion` sets status=CONSUMED
 3. **Dashboard**: Fetches `batch_summary` view (batches grouped with frozen/consumed counts)
+
+### Label Rendering Architecture
+
+Labels are rendered client-side in Elm and converted to PNG for printing:
+
+```
+Elm (SVG) → JS Port → Canvas → PNG (base64) → POST to printer service → brother_ql
+```
+
+**Key components:**
+- `Label.elm` - SVG label rendering with QR codes (uses `pablohirafuji/elm-qrcode`)
+- `Ports.elm` - Port definitions for SVG→PNG conversion
+- `main.js` - JavaScript handlers for canvas-based PNG conversion
+- `label_preset` table - Stores named label configurations (dimensions, fonts)
+
+**Label presets** are stored in PostgreSQL and allow users to configure different label sizes (62mm, 29mm, 12mm tape). The Label Designer page (`/labels`) provides a live preview with sample data.
 
 ### Service Architecture
 
@@ -91,6 +108,7 @@ FrostByte is an **append-only** home freezer management system. Each physical fo
 - **`portion_detail` view**: Joins portion with batch info for QR scan page
 - **`freezer_history` view**: Running totals of frozen portions over time for chart
 - **`recipe_summary` view**: Recipes with aggregated ingredient names for listing
+- **`label_preset` table**: Named label configurations with dimensions, font sizes, and styling
 
 ### Elm Client Structure
 
@@ -98,14 +116,16 @@ Modular SPA using `Browser.application` with page-based architecture:
 
 ```
 client/src/
-├── Main.elm              # Entry point, routing, global state
+├── Main.elm              # Entry point, routing, global state, port subscriptions
 ├── Route.elm             # Route type and URL parsing
-├── Types.elm             # Shared domain types (BatchSummary, PortionDetail, etc.)
+├── Types.elm             # Shared domain types (BatchSummary, PortionDetail, LabelPreset, etc.)
 ├── Api.elm               # HTTP functions (parameterized msg constructors)
 ├── Api/
 │   ├── Decoders.elm      # JSON decoders (uses andMap helper for >8 fields)
 │   └── Encoders.elm      # JSON encoders for POST/PATCH bodies
 ├── Components.elm        # Shared UI (header, notification, modal, loading)
+├── Label.elm             # SVG label rendering with QR codes
+├── Ports.elm             # Port definitions for SVG→PNG conversion
 └── Page/
     ├── Dashboard.elm     # Batch list with servings calculation
     ├── NewBatch.elm      # Batch creation form with printing and recipe search
@@ -115,22 +135,29 @@ client/src/
     ├── Recipes.elm       # Recipe CRUD (reusable batch templates)
     ├── Ingredients.elm   # Ingredient CRUD with expiry days
     ├── ContainerTypes.elm# Container type CRUD
+    ├── LabelDesigner.elm # Label preset management with live preview
     └── NotFound.elm      # 404 page
 ```
 
 **Architecture pattern:**
 - Each page module exposes: `Model`, `Msg`, `OutMsg`, `init`, `update`, `view`
-- Pages communicate up via `OutMsg` (navigation, notifications, refresh requests)
+- Pages communicate up via `OutMsg` (navigation, notifications, refresh requests, port requests)
 - Main.elm wraps page messages: `DashboardMsg Page.Dashboard.Msg`
-- Shared data (ingredients, containerTypes, batches, recipes) lives in Main and passed to pages
+- Shared data (ingredients, containerTypes, batches, recipes, labelPresets) lives in Main and passed to pages
+- Port subscriptions handled in Main.elm, results forwarded to active page
 
-**Routes:** `/` (Dashboard), `/new` (NewBatch), `/item/{uuid}` (ItemDetail), `/batch/{uuid}` (BatchDetail), `/history` (History), `/recipes` (Recipes), `/ingredients` (Ingredients), `/containers` (ContainerTypes)
+**Routes:** `/` (Dashboard), `/new` (NewBatch), `/item/{uuid}` (ItemDetail), `/batch/{uuid}` (BatchDetail), `/history` (History), `/recipes` (Recipes), `/ingredients` (Ingredients), `/containers` (ContainerTypes), `/labels` (LabelDesigner)
 
 **Styling:** Tailwind CSS with custom "frost" color palette
 
 ### Printer Service
 
-Python FastAPI service generates 62mm Brother QL labels with QR codes. Runs in dry-run mode by default (saves PNG to volume instead of printing).
+Python FastAPI service that receives pre-rendered PNG labels and prints them via brother_ql. Runs in dry-run mode by default (saves PNG to volume instead of printing).
+
+**Key features:**
+- Accepts base64-encoded PNG images
+- Direct printing via brother_ql library (no PIL/image generation)
+- Configurable via environment variables: `DRY_RUN`, `PRINTER_MODEL`, `PRINTER_TAPE`
 
 ## API Reference
 
@@ -149,8 +176,10 @@ Python FastAPI service generates 62mm Brother QL labels with QR codes. Runs in d
 | `/api/db/recipe?name=eq.{name}` | DELETE | Delete recipe |
 | `/api/db/container_type` | GET/POST | List or create container types |
 | `/api/db/container_type?name=eq.{name}` | PATCH/DELETE | Update or delete container type |
-| `/api/printer/print` | POST | Print single label |
-| `/api/printer/preview` | GET | Preview label as PNG image |
+| `/api/db/label_preset` | GET/POST | List or create label presets |
+| `/api/db/label_preset?name=eq.{name}` | PATCH/DELETE | Update or delete label preset |
+| `/api/printer/print` | POST | Print PNG label (body: `{image_data: "base64..."}`) |
+| `/api/printer/health` | GET | Printer service health check |
 
 ## Adding a New Page
 
@@ -182,6 +211,27 @@ Python FastAPI service generates 62mm Brother QL labels with QR codes. Runs in d
    - Add case in `viewPage` to render the page
 
 4. Add nav link in `Components.elm` `viewHeader`
+
+## Working with Ports
+
+For features requiring JavaScript interop (like SVG→PNG conversion):
+
+1. Define ports in `Ports.elm`:
+   ```elm
+   port requestSomething : SomeRequest -> Cmd msg
+   port receiveSomethingResult : (SomeResult -> msg) -> Sub msg
+   ```
+
+2. Add JavaScript handlers in `client/src/main.js`:
+   ```javascript
+   app.ports.requestSomething.subscribe(function(request) {
+       // Process and send result back
+       app.ports.receiveSomethingResult.send(result);
+   });
+   ```
+
+3. Subscribe in `Main.elm` subscriptions function
+4. Forward results to the appropriate page via the update function
 
 ## Language Notes
 

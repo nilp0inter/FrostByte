@@ -296,3 +296,23 @@ INSERT INTO container_type (name, servings_per_unit) VALUES
     ('Tupper pequeño', 1),
     ('Tupper mediano', 2),
     ('Tupper grande', 4);
+
+-- Label preset table: named label configurations for printing
+CREATE TABLE label_preset (
+    name TEXT PRIMARY KEY,
+    width INTEGER NOT NULL DEFAULT 696,
+    height INTEGER NOT NULL DEFAULT 300,
+    qr_size INTEGER NOT NULL DEFAULT 200,
+    padding INTEGER NOT NULL DEFAULT 20,
+    title_font_size INTEGER NOT NULL DEFAULT 48,
+    date_font_size INTEGER NOT NULL DEFAULT 32,
+    small_font_size INTEGER NOT NULL DEFAULT 18,
+    font_family TEXT NOT NULL DEFAULT 'sans-serif',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Insert default presets for common tape sizes
+INSERT INTO label_preset (name, width, height, qr_size, padding, title_font_size, date_font_size, small_font_size) VALUES
+    ('62mm (default)', 696, 300, 200, 20, 48, 32, 18),
+    ('29mm', 306, 200, 120, 10, 24, 18, 12),
+    ('12mm', 106, 100, 60, 5, 14, 12, 8);
