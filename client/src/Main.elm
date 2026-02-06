@@ -64,6 +64,8 @@ type alias Model =
     , printingProgress : Maybe PrintingProgress
     , printWithSave : Bool
     , previewModal : Maybe PortionPrintData
+    , containerTypeForm : ContainerTypeForm
+    , deleteConfirm : Maybe String
     }
 
 
@@ -104,6 +106,13 @@ type alias Category =
 type alias ContainerType =
     { name : String
     , servingsPerUnit : Float
+    }
+
+
+type alias ContainerTypeForm =
+    { name : String
+    , servingsPerUnit : String
+    , editing : Maybe String
     }
 
 
@@ -172,6 +181,7 @@ type Route
     | ItemDetail String
     | BatchDetail String
     | History
+    | ContainerTypes
     | NotFound
 
 
@@ -242,6 +252,8 @@ init flags url key =
       , printingProgress = Nothing
       , printWithSave = True
       , previewModal = Nothing
+      , containerTypeForm = { name = "", servingsPerUnit = "", editing = Nothing }
+      , deleteConfirm = Nothing
       }
     , initialCmd
     )
@@ -264,6 +276,7 @@ routeParser =
         , Parser.map ItemDetail (Parser.s "item" </> Parser.string)
         , Parser.map BatchDetail (Parser.s "batch" </> Parser.string)
         , Parser.map History (Parser.s "history")
+        , Parser.map ContainerTypes (Parser.s "containers")
         ]
 
 
@@ -301,6 +314,16 @@ type Msg
     | DismissNotification
     | OpenPreviewModal PortionPrintData
     | ClosePreviewModal
+    | FormContainerTypeNameChanged String
+    | FormContainerTypeServingsChanged String
+    | SaveContainerType
+    | EditContainerType ContainerType
+    | CancelEditContainerType
+    | DeleteContainerType String
+    | ConfirmDeleteContainer String
+    | CancelDeleteContainer
+    | ContainerTypeSaved (Result Http.Error ())
+    | ContainerTypeDeleted (Result Http.Error ())
 
 
 type alias PortionPrintData =
@@ -692,6 +715,83 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
+        FormContainerTypeNameChanged name ->
+            let
+                form =
+                    model.containerTypeForm
+            in
+            ( { model | containerTypeForm = { form | name = name } }, Cmd.none )
+
+        FormContainerTypeServingsChanged servings ->
+            let
+                form =
+                    model.containerTypeForm
+            in
+            ( { model | containerTypeForm = { form | servingsPerUnit = servings } }, Cmd.none )
+
+        SaveContainerType ->
+            ( { model | loading = True }, saveContainerType model.containerTypeForm )
+
+        EditContainerType containerType ->
+            let
+                form =
+                    model.containerTypeForm
+            in
+            ( { model | containerTypeForm = { form | name = containerType.name, servingsPerUnit = String.fromFloat containerType.servingsPerUnit, editing = Just containerType.name } }, Cmd.none )
+
+        CancelEditContainerType ->
+            let
+                form =
+                    model.containerTypeForm
+            in
+            ( { model | containerTypeForm = { form | name = "", servingsPerUnit = "", editing = Nothing } }, Cmd.none )
+
+        DeleteContainerType name ->
+            ( { model | deleteConfirm = Just name }, Cmd.none )
+
+        ConfirmDeleteContainer name ->
+            ( { model | deleteConfirm = Nothing, loading = True }, deleteContainerType name )
+
+        CancelDeleteContainer ->
+            ( { model | deleteConfirm = Nothing }, Cmd.none )
+
+        ContainerTypeSaved result ->
+            case result of
+                Ok _ ->
+                    ( { model
+                        | loading = False
+                        , containerTypeForm = { name = "", servingsPerUnit = "", editing = Nothing }
+                        , notification = Just { message = "Container type saved", notificationType = Success }
+                      }
+                    , fetchContainerTypes
+                    )
+
+                Err _ ->
+                    ( { model
+                        | loading = False
+                        , notification = Just { message = "Failed to save container type", notificationType = Error }
+                      }
+                    , Cmd.none
+                    )
+
+        ContainerTypeDeleted result ->
+            case result of
+                Ok _ ->
+                    ( { model
+                        | loading = False
+                        , notification = Just { message = "Container type deleted", notificationType = Success }
+                      }
+                    , fetchContainerTypes
+                    )
+
+                Err _ ->
+                    ( { model
+                        | loading = False
+                        , notification = Just { message = "Failed to delete container type (may be in use)", notificationType = Error }
+                      }
+                    , Cmd.none
+                    )
+
         ReprintAllFrozen ->
             case model.batchDetail of
                 Just batchData ->
@@ -853,6 +953,47 @@ consumePortion portionId =
         }
 
 
+saveContainerType : ContainerTypeForm -> Cmd Msg
+saveContainerType form =
+    let
+        body =
+            Encode.object
+                [ ( "name", Encode.string form.name )
+                , ( "servings_per_unit", Encode.float (Maybe.withDefault 1.0 (String.toFloat form.servingsPerUnit)) )
+                ]
+
+        (method, url) =
+            case form.editing of
+                Just originalName ->
+                    ( "PATCH", "/api/db/container_type?name=eq." ++ Url.percentEncode originalName )
+
+                Nothing ->
+                    ( "POST", "/api/db/container_type" )
+    in
+    Http.request
+        { method = method
+        , headers = []
+        , url = url
+        , body = Http.jsonBody body
+        , expect = Http.expectWhatever ContainerTypeSaved
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+deleteContainerType : String -> Cmd Msg
+deleteContainerType name =
+    Http.request
+        { method = "DELETE"
+        , headers = []
+        , url = "/api/db/container_type?name=eq." ++ Url.percentEncode name
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever ContainerTypeDeleted
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 
 -- DECODERS
 
@@ -956,6 +1097,7 @@ view model =
             , viewNotification model.notification
             , viewPrintingProgress model.printingProgress
             , viewPreviewModal model.previewModal
+            , viewDeleteConfirm model.deleteConfirm
             , main_ [ class "container mx-auto px-4 py-8" ]
                 [ case model.route of
                     Dashboard ->
@@ -972,6 +1114,9 @@ view model =
 
                     History ->
                         viewHistory model
+
+                    ContainerTypes ->
+                        viewContainerTypes model
 
                     NotFound ->
                         viewNotFound
@@ -1024,6 +1169,17 @@ viewHeader model =
                             )
                         ]
                         [ text "Historial" ]
+                    , a
+                        [ href "/containers"
+                        , class
+                            (if model.route == ContainerTypes then
+                                "bg-frost-700 px-4 py-2 rounded-lg"
+
+                             else
+                                "hover:bg-frost-700 px-4 py-2 rounded-lg transition-colors"
+                            )
+                        ]
+                        [ text "Envases" ]
                     ]
                 ]
             ]
@@ -1119,6 +1275,47 @@ viewPreviewModal maybePreview =
                             , class "px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium"
                             ]
                             [ text "Cerrar" ]
+                        ]
+                    ]
+                ]
+
+        Nothing ->
+            text ""
+
+
+viewDeleteConfirm : Maybe String -> Html Msg
+viewDeleteConfirm maybeName =
+    case maybeName of
+        Just name ->
+            div [ class "fixed inset-0 z-50 flex items-center justify-center" ]
+                [ div
+                    [ class "absolute inset-0 bg-black bg-opacity-50"
+                    , onClick CancelDeleteContainer
+                    ]
+                    []
+                , div [ class "relative bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden" ]
+                    [ div [ class "px-6 py-4 border-b" ]
+                        [ h3 [ class "text-lg font-semibold text-gray-800" ]
+                            [ text "Confirmar eliminación" ]
+                        ]
+                    , div [ class "p-6" ]
+                        [ p [ class "text-gray-600" ]
+                            [ text "¿Estás seguro de que quieres eliminar el envase \""
+                            , span [ class "font-medium" ] [ text name ]
+                            , text "\"? Esta acción no se puede deshacer."
+                            ]
+                        ]
+                    , div [ class "flex justify-end px-6 py-4 bg-gray-50 border-t space-x-4" ]
+                        [ button
+                            [ onClick CancelDeleteContainer
+                            , class "px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium"
+                            ]
+                            [ text "Cancelar" ]
+                        , button
+                            [ onClick (ConfirmDeleteContainer name)
+                            , class "px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium"
+                            ]
+                            [ text "Eliminar" ]
                         ]
                     ]
                 ]
@@ -1670,4 +1867,129 @@ viewNotFound =
         , h1 [ class "text-3xl font-bold text-gray-800 mt-4" ] [ text "Página no encontrada" ]
         , p [ class "text-gray-600 mt-2" ] [ text "La página que buscas no existe" ]
         , a [ href "/", class "btn-primary inline-block mt-4" ] [ text "Volver al inicio" ]
+        ]
+
+
+viewContainerTypes : Model -> Html Msg
+viewContainerTypes model =
+    div []
+        [ h1 [ class "text-3xl font-bold text-gray-800 mb-6" ] [ text "Tipos de Envase" ]
+        , div [ class "grid grid-cols-1 md:grid-cols-2 gap-6" ]
+            [ viewContainerTypeForm model
+            , viewContainerTypeList model
+            ]
+        ]
+
+
+viewContainerTypeForm : Model -> Html Msg
+viewContainerTypeForm model =
+    div [ class "card" ]
+        [ h2 [ class "text-lg font-semibold text-gray-800 mb-4" ]
+            [ text
+                (if model.containerTypeForm.editing /= Nothing then
+                    "Editar Envase"
+
+                 else
+                    "Nuevo Envase"
+                )
+            ]
+        , Html.form [ onSubmit SaveContainerType, class "space-y-4" ]
+            [ div []
+                [ label [ class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Nombre" ]
+                , input
+                    [ type_ "text"
+                    , class "input-field"
+                    , placeholder "Ej: Bolsa 1L"
+                    , value model.containerTypeForm.name
+                    , onInput FormContainerTypeNameChanged
+                    , required True
+                    ]
+                    []
+                ]
+            , div []
+                [ label [ class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Raciones por unidad" ]
+                , input
+                    [ type_ "number"
+                    , class "input-field"
+                    , Attr.min "0.1"
+                    , value model.containerTypeForm.servingsPerUnit
+                    , onInput FormContainerTypeServingsChanged
+                    , required True
+                    ]
+                    []
+                , p [ class "text-xs text-gray-500 mt-1" ] [ text "Número de raciones que caben en este envase" ]
+                ]
+            , div [ class "flex justify-end space-x-4 pt-4" ]
+                [ if model.containerTypeForm.editing /= Nothing then
+                    button
+                        [ type_ "button"
+                        , class "px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+                        , onClick CancelEditContainerType
+                        ]
+                        [ text "Cancelar" ]
+
+                  else
+                    text ""
+                , button
+                    [ type_ "submit"
+                    , class "btn-primary"
+                    , disabled model.loading
+                    ]
+                    [ if model.loading then
+                        text "Guardando..."
+
+                      else
+                        text "Guardar"
+                    ]
+                ]
+            ]
+        ]
+
+
+viewContainerTypeList : Model -> Html Msg
+viewContainerTypeList model =
+    div [ class "card" ]
+        [ h2 [ class "text-lg font-semibold text-gray-800 mb-4" ] [ text "Envases existentes" ]
+        , if List.isEmpty model.containerTypes then
+            div [ class "text-center py-8 text-gray-500" ]
+                [ text "No hay envases definidos" ]
+
+          else
+            div [ class "overflow-x-auto" ]
+                [ table [ class "w-full" ]
+                    [ thead [ class "bg-gray-50" ]
+                        [ tr []
+                            [ th [ class "px-4 py-2 text-left text-sm font-semibold text-gray-600" ] [ text "Nombre" ]
+                            , th [ class "px-4 py-2 text-left text-sm font-semibold text-gray-600" ] [ text "Raciones" ]
+                            , th [ class "px-4 py-2 text-left text-sm font-semibold text-gray-600" ] [ text "Acciones" ]
+                            ]
+                        ]
+                    , tbody [ class "divide-y divide-gray-200" ]
+                        (List.map viewContainerTypeRow model.containerTypes)
+                    ]
+                ]
+        ]
+
+
+viewContainerTypeRow : ContainerType -> Html Msg
+viewContainerTypeRow containerType =
+    tr [ class "hover:bg-gray-50" ]
+        [ td [ class "px-4 py-3 font-medium text-gray-900" ] [ text containerType.name ]
+        , td [ class "px-4 py-3 text-gray-600" ] [ text (String.fromFloat containerType.servingsPerUnit) ]
+        , td [ class "px-4 py-3" ]
+            [ div [ class "flex space-x-2" ]
+                [ button
+                    [ onClick (EditContainerType containerType)
+                    , class "text-blue-600 hover:text-blue-800 font-medium text-sm"
+                    , title "Editar"
+                    ]
+                    [ text "✏️" ]
+                , button
+                    [ onClick (DeleteContainerType containerType.name)
+                    , class "text-red-600 hover:text-red-800 font-medium text-sm"
+                    , title "Eliminar"
+                    ]
+                    [ text "🗑️" ]
+                ]
+            ]
         ]
