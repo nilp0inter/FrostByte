@@ -209,10 +209,12 @@ FROM aggregated
 ORDER BY date;
 
 -- Recipe table: reusable templates for batch creation
+-- Note: default_label_preset FK added after label_preset table is created
 CREATE TABLE recipe (
     name CITEXT PRIMARY KEY,
     default_portions INTEGER NOT NULL DEFAULT 1,
     default_container_id TEXT NULL REFERENCES container_type(name),
+    default_label_preset TEXT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -231,7 +233,8 @@ CREATE OR REPLACE FUNCTION save_recipe(
     p_ingredient_names TEXT[],
     p_default_portions INTEGER DEFAULT 1,
     p_default_container_id TEXT DEFAULT NULL,
-    p_original_name TEXT DEFAULT NULL
+    p_original_name TEXT DEFAULT NULL,
+    p_default_label_preset TEXT DEFAULT NULL
 ) RETURNS TABLE (recipe_name TEXT)
 LANGUAGE plpgsql
 AS $$
@@ -252,11 +255,12 @@ BEGIN
     END IF;
 
     -- Insert or update recipe
-    INSERT INTO recipe (name, default_portions, default_container_id)
-    VALUES (LOWER(p_name), p_default_portions, p_default_container_id)
+    INSERT INTO recipe (name, default_portions, default_container_id, default_label_preset)
+    VALUES (LOWER(p_name), p_default_portions, p_default_container_id, p_default_label_preset)
     ON CONFLICT (name) DO UPDATE SET
         default_portions = EXCLUDED.default_portions,
-        default_container_id = EXCLUDED.default_container_id;
+        default_container_id = EXCLUDED.default_container_id,
+        default_label_preset = EXCLUDED.default_label_preset;
 
     -- Clear old ingredients and insert new ones
     DELETE FROM recipe_ingredient WHERE recipe_ingredient.recipe_name = LOWER(p_name);
@@ -273,6 +277,7 @@ SELECT
     r.name,
     r.default_portions,
     r.default_container_id,
+    r.default_label_preset,
     r.created_at,
     COALESCE(
         (SELECT string_agg(ri.ingredient_name::TEXT, ', ' ORDER BY ri.ingredient_name)
@@ -356,4 +361,11 @@ INSERT INTO label_preset (
 ALTER TABLE batch
     ADD CONSTRAINT batch_label_preset_fkey
     FOREIGN KEY (label_preset) REFERENCES label_preset(name)
+    ON UPDATE CASCADE ON DELETE SET NULL;
+
+-- Add foreign key from recipe.default_label_preset to label_preset.name
+-- (defined here because label_preset table is created after recipe)
+ALTER TABLE recipe
+    ADD CONSTRAINT recipe_default_label_preset_fkey
+    FOREIGN KEY (default_label_preset) REFERENCES label_preset(name)
     ON UPDATE CASCADE ON DELETE SET NULL;

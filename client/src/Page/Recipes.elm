@@ -20,6 +20,7 @@ type alias Model =
     { recipes : List Recipe
     , ingredients : List Ingredient
     , containerTypes : List ContainerType
+    , labelPresets : List LabelPreset
     , form : RecipeForm
     , loading : Bool
     , deleteConfirm : Maybe String
@@ -35,6 +36,7 @@ type Msg
     | RemoveIngredient String
     | FormPortionsChanged String
     | FormContainerChanged String
+    | FormLabelPresetChanged String
     | SaveRecipe
     | EditRecipe Recipe
     | CancelEdit
@@ -53,11 +55,12 @@ type OutMsg
     | RefreshRecipes
 
 
-init : List Recipe -> List Ingredient -> List ContainerType -> ( Model, Cmd Msg )
-init recipes ingredients containerTypes =
+init : List Recipe -> List Ingredient -> List ContainerType -> List LabelPreset -> ( Model, Cmd Msg )
+init recipes ingredients containerTypes labelPresets =
     ( { recipes = recipes
       , ingredients = ingredients
       , containerTypes = containerTypes
+      , labelPresets = labelPresets
       , form = emptyRecipeForm
       , loading = False
       , deleteConfirm = Nothing
@@ -174,6 +177,13 @@ update msg model =
             in
             ( { model | form = { form | defaultContainerId = containerId } }, Cmd.none, NoOp )
 
+        FormLabelPresetChanged presetName ->
+            let
+                form =
+                    model.form
+            in
+            ( { model | form = { form | defaultLabelPreset = presetName } }, Cmd.none, NoOp )
+
         SaveRecipe ->
             if String.trim model.form.name == "" then
                 ( model, Cmd.none, ShowNotification { message = "El nombre es obligatorio", notificationType = Error } )
@@ -208,6 +218,7 @@ update msg model =
                     , ingredientInput = ""
                     , defaultPortions = String.fromInt recipe.defaultPortions
                     , defaultContainerId = Maybe.withDefault "" recipe.defaultContainerId
+                    , defaultLabelPreset = Maybe.withDefault "" recipe.defaultLabelPreset
                     , editing = Just recipe.name
                     }
               }
@@ -315,9 +326,9 @@ viewForm model =
                     []
                 ]
             , viewIngredientSelector model
-            , div [ class "grid grid-cols-2 gap-4" ]
+            , div [ class "grid grid-cols-3 gap-4" ]
                 [ div []
-                    [ label [ class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Porciones por defecto" ]
+                    [ label [ class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Porciones" ]
                     , input
                         [ type_ "number"
                         , class "input-field"
@@ -329,7 +340,7 @@ viewForm model =
                         []
                     ]
                 , div []
-                    [ label [ class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Envase por defecto" ]
+                    [ label [ class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Envase" ]
                     , select
                         [ class "input-field"
                         , onInput FormContainerChanged
@@ -342,6 +353,22 @@ viewForm model =
                                         [ text cont.name ]
                                 )
                                 model.containerTypes
+                        )
+                    ]
+                , div []
+                    [ label [ class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Etiqueta" ]
+                    , select
+                        [ class "input-field"
+                        , onInput FormLabelPresetChanged
+                        , value model.form.defaultLabelPreset
+                        ]
+                        (option [ value "" ] [ text "-- Sin preferencia --" ]
+                            :: List.map
+                                (\preset ->
+                                    option [ value preset.name, selected (preset.name == model.form.defaultLabelPreset) ]
+                                        [ text preset.name ]
+                                )
+                                model.labelPresets
                         )
                     ]
                 ]

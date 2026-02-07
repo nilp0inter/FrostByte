@@ -95,10 +95,11 @@ portionInBatchDecoder =
 
 recipeDecoder : Decoder Recipe
 recipeDecoder =
-    Decode.map4 Recipe
+    Decode.map5 Recipe
         (Decode.field "name" Decode.string)
         (Decode.field "default_portions" Decode.int)
         (Decode.field "default_container_id" (Decode.nullable Decode.string))
+        (Decode.field "default_label_preset" (Decode.nullable Decode.string))
         (Decode.field "ingredients" Decode.string)
 
 

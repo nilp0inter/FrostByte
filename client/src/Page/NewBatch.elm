@@ -577,6 +577,20 @@ update msg model =
                 containerId =
                     Maybe.withDefault model.form.containerId recipe.defaultContainerId
 
+                -- Find the matching label preset from recipe's default
+                newSelectedPreset =
+                    case recipe.defaultLabelPreset of
+                        Just presetName ->
+                            case List.filter (\p -> p.name == presetName) model.labelPresets |> List.head of
+                                Just preset ->
+                                    Just preset
+
+                                Nothing ->
+                                    model.selectedPreset
+
+                        Nothing ->
+                            model.selectedPreset
+
                 form =
                     model.form
             in
@@ -590,6 +604,7 @@ update msg model =
                     }
                 , showRecipeSuggestions = False
                 , expiryRequired = not hasExpiryInfo && not (List.isEmpty selectedIngredients)
+                , selectedPreset = newSelectedPreset
               }
             , Cmd.none
             , NoOp

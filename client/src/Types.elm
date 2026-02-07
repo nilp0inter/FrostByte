@@ -199,6 +199,7 @@ type alias Recipe =
     { name : String
     , defaultPortions : Int
     , defaultContainerId : Maybe String
+    , defaultLabelPreset : Maybe String
     , ingredients : String
     }
 
@@ -209,6 +210,7 @@ type alias RecipeForm =
     , ingredientInput : String
     , defaultPortions : String
     , defaultContainerId : String
+    , defaultLabelPreset : String
     , editing : Maybe String
     }
 
@@ -220,6 +222,7 @@ emptyRecipeForm =
     , ingredientInput = ""
     , defaultPortions = "1"
     , defaultContainerId = ""
+    , defaultLabelPreset = ""
     , editing = Nothing
     }
 

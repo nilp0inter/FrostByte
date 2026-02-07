@@ -177,7 +177,7 @@ initPage route model =
         Route.Recipes ->
             let
                 ( pageModel, pageCmd ) =
-                    Recipes.init model.recipes model.ingredients model.containerTypes
+                    Recipes.init model.recipes model.ingredients model.containerTypes model.labelPresets
             in
             ( { model | page = RecipesPage pageModel }
             , Cmd.map RecipesMsg pageCmd

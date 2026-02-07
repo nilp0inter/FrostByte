@@ -121,6 +121,13 @@ encodeRecipeRequest form =
             else
                 Encode.string form.defaultContainerId
 
+        labelPresetValue =
+            if form.defaultLabelPreset == "" then
+                Encode.null
+
+            else
+                Encode.string form.defaultLabelPreset
+
         portions =
             Maybe.withDefault 1 (String.toInt form.defaultPortions)
 
@@ -129,6 +136,7 @@ encodeRecipeRequest form =
             , ( "p_ingredient_names", Encode.list Encode.string ingredientNames )
             , ( "p_default_portions", Encode.int portions )
             , ( "p_default_container_id", containerValue )
+            , ( "p_default_label_preset", labelPresetValue )
             ]
 
         fields =
