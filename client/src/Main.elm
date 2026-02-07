@@ -59,6 +59,7 @@ type alias Model =
     , printingProgress : Maybe PrintingProgress
     , loading : Bool
     , mobileMenuOpen : Bool
+    , configDropdownOpen : Bool
     }
 
 
@@ -97,6 +98,7 @@ init flags url key =
             , printingProgress = Nothing
             , loading = True
             , mobileMenuOpen = False
+            , configDropdownOpen = False
             }
     in
     ( model
@@ -223,6 +225,7 @@ type Msg
     | NavigateToBatch String
     | GotPngResult Ports.PngResult
     | ToggleMobileMenu
+    | ToggleConfigDropdown
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -242,7 +245,7 @@ update msg model =
                     Route.parseUrl url
 
                 newModel =
-                    { model | url = url, route = route, mobileMenuOpen = False }
+                    { model | url = url, route = route, mobileMenuOpen = False, configDropdownOpen = False }
             in
             initPage route newModel
 
@@ -484,6 +487,9 @@ update msg model =
         ToggleMobileMenu ->
             ( { model | mobileMenuOpen = not model.mobileMenuOpen }, Cmd.none )
 
+        ToggleConfigDropdown ->
+            ( { model | configDropdownOpen = not model.configDropdownOpen }, Cmd.none )
+
 
 maybeInitPage : Model -> ( Model, Cmd Msg )
 maybeInitPage model =
@@ -707,7 +713,7 @@ view model =
     { title = "FrostByte"
     , body =
         [ div [ class "min-h-screen bg-gray-100" ]
-            [ Components.viewHeader model.route model.mobileMenuOpen ToggleMobileMenu
+            [ Components.viewHeader model.route model.mobileMenuOpen model.configDropdownOpen ToggleMobileMenu ToggleConfigDropdown
             , Components.viewNotification model.notification DismissNotification
             , Components.viewPrintingProgress model.printingProgress
             , main_ [ class "container mx-auto px-4 py-8" ]

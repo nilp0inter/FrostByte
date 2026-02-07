@@ -17,8 +17,8 @@ import Types exposing (..)
 import Url.Builder
 
 
-viewHeader : Route -> Bool -> msg -> Html msg
-viewHeader currentRoute mobileMenuOpen toggleMsg =
+viewHeader : Route -> Bool -> Bool -> msg -> msg -> Html msg
+viewHeader currentRoute mobileMenuOpen configDropdownOpen toggleMobileMsg toggleConfigMsg =
     header [ class "bg-frost-600 text-white shadow-lg relative" ]
         [ div [ class "container mx-auto px-4 py-4" ]
             [ div [ class "flex items-center justify-between" ]
@@ -27,19 +27,16 @@ viewHeader currentRoute mobileMenuOpen toggleMsg =
                     , span [ class "text-2xl font-bold" ] [ text "FrostByte" ]
                     ]
                 , -- Desktop navigation (hidden on mobile)
-                  nav [ class "hidden md:flex space-x-4" ]
-                    [ navLink "/" "Inventario" (currentRoute == Dashboard)
-                    , navLink "/new" "+ Nuevo" (currentRoute == NewBatch)
+                  nav [ class "hidden md:flex space-x-4 items-center" ]
+                    [ navLink "/new" "✚ Añadir" (currentRoute == NewBatch)
+                    , navLink "/" "Inventario" (currentRoute == Dashboard)
                     , navLink "/history" "Historial" (currentRoute == History)
-                    , navLink "/recipes" "Recetas" (currentRoute == Recipes)
-                    , navLink "/ingredients" "Ingredientes" (currentRoute == Ingredients)
-                    , navLink "/containers" "Envases" (currentRoute == ContainerTypes)
-                    , navLink "/labels" "Etiquetas" (currentRoute == LabelDesigner)
+                    , viewConfigDropdown currentRoute configDropdownOpen toggleConfigMsg
                     ]
                 , -- Hamburger button (visible on mobile only)
                   button
                     [ class "md:hidden p-2 rounded-lg hover:bg-frost-700 transition-colors"
-                    , onClick toggleMsg
+                    , onClick toggleMobileMsg
                     , Attr.attribute "aria-label" "Toggle menu"
                     ]
                     [ div [ class "w-6 h-5 flex flex-col justify-between" ]
@@ -54,9 +51,11 @@ viewHeader currentRoute mobileMenuOpen toggleMsg =
           if mobileMenuOpen then
             div [ class "md:hidden absolute top-full left-0 right-0 bg-frost-600 shadow-lg z-50" ]
                 [ nav [ class "container mx-auto px-4 py-2 flex flex-col space-y-1" ]
-                    [ mobileNavLink "/" "Inventario" (currentRoute == Dashboard)
-                    , mobileNavLink "/new" "+ Nuevo" (currentRoute == NewBatch)
+                    [ mobileNavLink "/new" "✚ Añadir" (currentRoute == NewBatch)
+                    , mobileNavLink "/" "Inventario" (currentRoute == Dashboard)
                     , mobileNavLink "/history" "Historial" (currentRoute == History)
+                    , div [ class "border-t border-frost-500 my-2" ] []
+                    , div [ class "px-4 py-1 text-frost-300 text-sm" ] [ text "Ajustes" ]
                     , mobileNavLink "/recipes" "Recetas" (currentRoute == Recipes)
                     , mobileNavLink "/ingredients" "Ingredientes" (currentRoute == Ingredients)
                     , mobileNavLink "/containers" "Envases" (currentRoute == ContainerTypes)
@@ -94,6 +93,54 @@ mobileNavLink url label isActive =
 
              else
                 "hover:bg-frost-700 px-4 py-3 rounded-lg transition-colors block"
+            )
+        ]
+        [ text label ]
+
+
+viewConfigDropdown : Route -> Bool -> msg -> Html msg
+viewConfigDropdown currentRoute isOpen toggleMsg =
+    let
+        isConfigActive =
+            currentRoute == Recipes || currentRoute == Ingredients || currentRoute == ContainerTypes || currentRoute == LabelDesigner
+    in
+    div [ class "relative" ]
+        [ button
+            [ onClick toggleMsg
+            , class
+                (if isConfigActive || isOpen then
+                    "bg-frost-700 px-4 py-2 rounded-lg flex items-center gap-2"
+
+                 else
+                    "hover:bg-frost-700 px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+                )
+            ]
+            [ span [] [ text "Ajustes" ]
+            , span [ class "text-xs" ] [ text (if isOpen then "▲" else "▼") ]
+            ]
+        , if isOpen then
+            div [ class "absolute top-full left-0 mt-1 bg-frost-700 rounded-lg shadow-lg py-1 min-w-max z-50" ]
+                [ dropdownLink "/recipes" "Recetas" (currentRoute == Recipes)
+                , dropdownLink "/ingredients" "Ingredientes" (currentRoute == Ingredients)
+                , dropdownLink "/containers" "Envases" (currentRoute == ContainerTypes)
+                , dropdownLink "/labels" "Etiquetas" (currentRoute == LabelDesigner)
+                ]
+
+          else
+            text ""
+        ]
+
+
+dropdownLink : String -> String -> Bool -> Html msg
+dropdownLink url label isActive =
+    a
+        [ href url
+        , class
+            (if isActive then
+                "block px-4 py-2 bg-frost-800"
+
+             else
+                "block px-4 py-2 hover:bg-frost-800 transition-colors"
             )
         ]
         [ text label ]
