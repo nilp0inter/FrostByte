@@ -244,10 +244,10 @@ viewPreviewModal maybePreview closeMsg =
 
 
 {-| SVG-based preview modal for labels.
-Uses Label.viewLabel to render the label directly instead of fetching from server.
+Uses Label.viewLabelWithComputed to render the label with text fitting.
 -}
-viewPreviewModalSvg : Label.LabelSettings -> String -> Maybe PortionPrintData -> msg -> Html msg
-viewPreviewModalSvg settings appHost maybePreview closeMsg =
+viewPreviewModalSvg : Label.LabelSettings -> String -> Maybe PortionPrintData -> Maybe Label.ComputedLabelData -> msg -> Html msg
+viewPreviewModalSvg settings appHost maybePreview maybeComputed closeMsg =
     case maybePreview of
         Just portionData ->
             let
@@ -259,6 +259,18 @@ viewPreviewModalSvg settings appHost maybePreview closeMsg =
                     , bestBeforeDate = portionData.bestBeforeDate
                     , appHost = appHost
                     }
+
+                -- Use computed data if available, otherwise use defaults
+                computed =
+                    case maybeComputed of
+                        Just c ->
+                            c
+
+                        Nothing ->
+                            { titleFontSize = settings.titleFontSize
+                            , titleLines = [ portionData.name ]
+                            , ingredientLines = [ portionData.ingredients ]
+                            }
 
                 -- Scale preview to fit modal
                 previewScale =
@@ -285,7 +297,7 @@ viewPreviewModalSvg settings appHost maybePreview closeMsg =
                             [ style "transform" ("scale(" ++ String.fromFloat previewScale ++ ")")
                             , style "transform-origin" "center center"
                             ]
-                            [ Label.viewLabel settings labelData ]
+                            [ Label.viewLabelWithComputed settings labelData computed ]
                         ]
                     , div [ class "flex justify-end px-6 py-4 bg-gray-50 border-t" ]
                         [ button

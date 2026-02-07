@@ -189,8 +189,9 @@ encodeLabelPreset form =
         , ( "separator_thickness", Encode.int (Maybe.withDefault 1 (String.toInt form.separatorThickness)) )
         , ( "separator_color", Encode.string form.separatorColor )
         , ( "corner_radius", Encode.int (Maybe.withDefault 0 (String.toInt form.cornerRadius)) )
-        , ( "title_max_chars", Encode.int (Maybe.withDefault 18 (String.toInt form.titleMaxChars)) )
+        , ( "title_min_font_size", Encode.int (Maybe.withDefault 24 (String.toInt form.titleMinFontSize)) )
         , ( "ingredients_max_chars", Encode.int (Maybe.withDefault 45 (String.toInt form.ingredientsMaxChars)) )
+        , ( "rotate", Encode.bool form.rotate )
         ]
 
 

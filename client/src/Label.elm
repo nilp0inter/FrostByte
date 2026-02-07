@@ -1,9 +1,13 @@
 module Label exposing
-    ( LabelData
+    ( ComputedLabelData
+    , LabelData
     , LabelSettings
     , defaultSettings
+    , displayHeight
+    , displayWidth
     , labelSvgId
-    , viewLabel
+    , textMaxWidth
+    , viewLabelWithComputed
     )
 
 {-| SVG label rendering for FrostByte freezer labels.
@@ -31,6 +35,15 @@ type alias LabelData =
     }
 
 
+{-| Computed values from JS text measurement for rendering.
+-}
+type alias ComputedLabelData =
+    { titleFontSize : Int
+    , titleLines : List String
+    , ingredientLines : List String
+    }
+
+
 {-| Settings that control label dimensions and styling.
 -}
 type alias LabelSettings =
@@ -54,8 +67,9 @@ type alias LabelSettings =
     , separatorThickness : Int
     , separatorColor : String
     , cornerRadius : Int
-    , titleMaxChars : Int
+    , titleMinFontSize : Int
     , ingredientsMaxChars : Int
+    , rotate : Bool
     }
 
 
@@ -83,8 +97,9 @@ defaultSettings =
     , separatorThickness = 1
     , separatorColor = "#cccccc"
     , cornerRadius = 0
-    , titleMaxChars = 18
+    , titleMinFontSize = 24
     , ingredientsMaxChars = 45
+    , rotate = False
     }
 
 
@@ -95,40 +110,83 @@ labelSvgId portionId =
     "label-svg-" ++ portionId
 
 
-{-| Render a label as SVG.
+{-| Get display width. When rotate=True, swaps width/height for landscape display.
 -}
-viewLabel : LabelSettings -> LabelData -> Html msg
-viewLabel settings data =
-    let
-        qrUrl =
-            "https://" ++ data.appHost ++ "/item/" ++ data.portionId
+displayWidth : LabelSettings -> Int
+displayWidth settings =
+    if settings.rotate then
+        settings.height
 
-        -- QR library adds ~10% padding (quiet zone) on each side
-        -- Compensate by moving the QR code closer to the edge
+    else
+        settings.width
+
+
+{-| Get display height. When rotate=True, swaps width/height for landscape display.
+-}
+displayHeight : LabelSettings -> Int
+displayHeight settings =
+    if settings.rotate then
+        settings.width
+
+    else
+        settings.height
+
+
+{-| Calculate the maximum width available for text content.
+Used by other modules to request text measurement with correct width.
+Uses display dimensions (landscape orientation).
+-}
+textMaxWidth : LabelSettings -> Int
+textMaxWidth settings =
+    let
+        dispWidth =
+            displayWidth settings
+
         qrPaddingCompensation =
             settings.qrSize // 10
 
         qrX =
-            settings.width - settings.qrSize - settings.padding + qrPaddingCompensation
+            dispWidth - settings.qrSize - settings.padding + qrPaddingCompensation
+    in
+    if settings.showQr then
+        qrX + qrPaddingCompensation - settings.padding - settings.padding
+
+    else
+        dispWidth - settings.padding - settings.padding
+
+
+{-| Render a label as SVG with computed text measurements.
+Uses JS-measured title font size and pre-wrapped ingredient lines.
+Renders in landscape orientation (display dimensions).
+-}
+viewLabelWithComputed : LabelSettings -> LabelData -> ComputedLabelData -> Html msg
+viewLabelWithComputed settings data computed =
+    let
+        -- Display dimensions (swapped for landscape)
+        dispWidth =
+            displayWidth settings
+
+        dispHeight =
+            displayHeight settings
+
+        qrUrl =
+            "https://" ++ data.appHost ++ "/item/" ++ data.portionId
+
+        qrPaddingCompensation =
+            settings.qrSize // 10
+
+        qrX =
+            dispWidth - settings.qrSize - settings.padding + qrPaddingCompensation
 
         qrY =
-            (settings.height - settings.qrSize) // 2
+            (dispHeight - settings.qrSize) // 2
 
-        -- Maximum X for text content (leaves space for QR)
-        -- Account for QR library's built-in padding when calculating where text/lines can extend
-        textMaxX =
+        textMaxX_ =
             if settings.showQr then
                 qrX + qrPaddingCompensation - settings.padding
 
             else
-                settings.width - settings.padding
-
-        -- Truncated text
-        truncatedName =
-            truncateText settings.titleMaxChars data.name
-
-        truncatedIngredients =
-            truncateText settings.ingredientsMaxChars data.ingredients
+                dispWidth - settings.padding
 
         formattedExpiryDate =
             formatDate data.expiryDate
@@ -140,36 +198,51 @@ viewLabel settings data =
         startY =
             settings.padding
 
-        -- Title position
+        -- Title position (use computed font size for Y calculation)
         titleY =
-            startY + settings.titleFontSize
+            startY + computed.titleFontSize
 
-        -- Separator position (just below title)
+        -- Title line height for multi-line titles
+        titleLineHeight =
+            computed.titleFontSize + 4
+
+        titleLinesCount =
+            List.length computed.titleLines
+
+        -- Y position after all title lines
+        titleEndY =
+            titleY + (titleLinesCount - 1) * titleLineHeight
+
         separatorY =
-            titleY + settings.verticalSpacing
+            titleEndY + settings.verticalSpacing
 
-        -- Calculate next Y after title section
         afterTitleY =
             if settings.showTitle then
                 if settings.showSeparator then
                     separatorY + settings.verticalSpacing
 
                 else
-                    titleY + settings.verticalSpacing
+                    titleEndY + settings.verticalSpacing
 
             else
                 startY
 
-        -- Ingredients section (label on its own line, then ingredients text)
+        -- Ingredients section with multi-line support
         ingredientsLabelY =
             afterTitleY + settings.smallFontSize
 
         ingredientsTextY =
             ingredientsLabelY + settings.smallFontSize + 5
 
+        ingredientLineHeight =
+            settings.smallFontSize + 4
+
+        ingredientLinesCount =
+            List.length computed.ingredientLines
+
         afterIngredientsY =
             if settings.showIngredients then
-                ingredientsTextY + settings.verticalSpacing
+                ingredientsTextY + (ingredientLinesCount - 1) * ingredientLineHeight + settings.verticalSpacing
 
             else
                 afterTitleY
@@ -197,13 +270,11 @@ viewLabel settings data =
 
         -- Branding position (bottom left)
         brandingY =
-            settings.height - settings.padding
+            dispHeight - settings.padding
 
-        -- Unique clip path ID for this label
         clipId =
             "clip-" ++ data.portionId
 
-        -- Build the list of SVG elements
         clipPathDef =
             if settings.cornerRadius > 0 then
                 [ Svg.defs []
@@ -211,8 +282,8 @@ viewLabel settings data =
                         [ Svg.rect
                             [ SvgA.x "0"
                             , SvgA.y "0"
-                            , SvgA.width (String.fromInt settings.width)
-                            , SvgA.height (String.fromInt settings.height)
+                            , SvgA.width (String.fromInt dispWidth)
+                            , SvgA.height (String.fromInt dispHeight)
                             , SvgA.rx (String.fromInt settings.cornerRadius)
                             , SvgA.ry (String.fromInt settings.cornerRadius)
                             ]
@@ -228,25 +299,41 @@ viewLabel settings data =
             Svg.rect
                 [ SvgA.x "0"
                 , SvgA.y "0"
-                , SvgA.width (String.fromInt settings.width)
-                , SvgA.height (String.fromInt settings.height)
+                , SvgA.width (String.fromInt dispWidth)
+                , SvgA.height (String.fromInt dispHeight)
                 , SvgA.fill "white"
                 , SvgA.rx (String.fromInt settings.cornerRadius)
                 , SvgA.ry (String.fromInt settings.cornerRadius)
                 ]
                 []
 
+        -- Title with computed font size and multi-line support
         titleElement =
             if settings.showTitle then
                 [ Svg.text_
                     [ SvgA.x (String.fromInt settings.padding)
                     , SvgA.y (String.fromInt titleY)
                     , SvgA.fontFamily settings.fontFamily
-                    , SvgA.fontSize (String.fromInt settings.titleFontSize ++ "px")
+                    , SvgA.fontSize (String.fromInt computed.titleFontSize ++ "px")
                     , SvgA.fontWeight "bold"
                     , SvgA.fill "black"
                     ]
-                    [ Svg.text truncatedName ]
+                    (List.indexedMap
+                        (\idx line ->
+                            Svg.tspan
+                                [ SvgA.x (String.fromInt settings.padding)
+                                , SvgA.dy
+                                    (if idx == 0 then
+                                        "0"
+
+                                     else
+                                        String.fromInt titleLineHeight
+                                    )
+                                ]
+                                [ Svg.text line ]
+                        )
+                        computed.titleLines
+                    )
                 ]
 
             else
@@ -257,7 +344,7 @@ viewLabel settings data =
                 [ Svg.line
                     [ SvgA.x1 (String.fromInt settings.padding)
                     , SvgA.y1 (String.fromInt separatorY)
-                    , SvgA.x2 (String.fromInt textMaxX)
+                    , SvgA.x2 (String.fromInt textMaxX_)
                     , SvgA.y2 (String.fromInt separatorY)
                     , SvgA.stroke settings.separatorColor
                     , SvgA.strokeWidth (String.fromInt settings.separatorThickness)
@@ -268,6 +355,7 @@ viewLabel settings data =
             else
                 []
 
+        -- Ingredients with multi-line tspans
         ingredientsElement =
             if settings.showIngredients then
                 [ Svg.text_
@@ -285,7 +373,22 @@ viewLabel settings data =
                     , SvgA.fontSize (String.fromInt settings.smallFontSize ++ "px")
                     , SvgA.fill "#666666"
                     ]
-                    [ Svg.text truncatedIngredients ]
+                    (List.indexedMap
+                        (\idx line ->
+                            Svg.tspan
+                                [ SvgA.x (String.fromInt settings.padding)
+                                , SvgA.dy
+                                    (if idx == 0 then
+                                        "0"
+
+                                     else
+                                        String.fromInt ingredientLineHeight
+                                    )
+                                ]
+                                [ Svg.text line ]
+                        )
+                        computed.ingredientLines
+                    )
                 ]
 
             else
@@ -366,7 +469,6 @@ viewLabel settings data =
             else
                 []
 
-        -- Apply clip path for rounded corners
         clipPathAttr =
             if settings.cornerRadius > 0 then
                 [ SvgA.clipPath ("url(#" ++ clipId ++ ")") ]
@@ -388,9 +490,9 @@ viewLabel settings data =
     in
     Svg.svg
         [ SvgA.id (labelSvgId data.portionId)
-        , SvgA.width (String.fromInt settings.width)
-        , SvgA.height (String.fromInt settings.height)
-        , SvgA.viewBox ("0 0 " ++ String.fromInt settings.width ++ " " ++ String.fromInt settings.height)
+        , SvgA.width (String.fromInt dispWidth)
+        , SvgA.height (String.fromInt dispHeight)
+        , SvgA.viewBox ("0 0 " ++ String.fromInt dispWidth ++ " " ++ String.fromInt dispHeight)
         ]
         (clipPathDef ++ [ contentGroup ])
 

@@ -129,5 +129,6 @@ labelPresetDecoder =
         |> andMap (Decode.field "separator_thickness" Decode.int)
         |> andMap (Decode.field "separator_color" Decode.string)
         |> andMap (Decode.field "corner_radius" Decode.int)
-        |> andMap (Decode.field "title_max_chars" Decode.int)
+        |> andMap (Decode.field "title_min_font_size" Decode.int)
         |> andMap (Decode.field "ingredients_max_chars" Decode.int)
+        |> andMap (Decode.field "rotate" Decode.bool)

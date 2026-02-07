@@ -7,7 +7,9 @@
       "Bash(git -C /home/nil/Projects/github.com/nilp0inter/FrostByte status)",
       "Bash(git -C /home/nil/Projects/github.com/nilp0inter/FrostByte branch:*)",
       "Bash(git -C /home/nil/Projects/github.com/nilp0inter/FrostByte log --oneline)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(docker compose:*)",
+      "Bash(python3:*)"
     ]
   }
 }

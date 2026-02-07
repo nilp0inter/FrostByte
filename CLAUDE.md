@@ -75,19 +75,34 @@ FrostByte is an **append-only** home freezer management system. Each physical fo
 
 ### Label Rendering Architecture
 
-Labels are rendered client-side in Elm and converted to PNG for printing:
+Labels are rendered client-side in Elm with dynamic text fitting and converted to PNG for printing:
 
 ```
-Elm (SVG) → JS Port → Canvas → PNG (base64) → POST to printer service → brother_ql
+Text Measure Request → JS Canvas measureText() → Computed Data (font size, wrapped lines)
+    → Elm SVG with fitted text → JS Canvas → PNG (base64) → POST to printer service → brother_ql
 ```
+
+**Text fitting flow:**
+1. Elm requests text measurement via `requestTextMeasure` port
+2. JavaScript measures text width using Canvas API, shrinks title font until it fits (down to `titleMinFontSize`)
+3. If title still doesn't fit at min font, wraps into multiple lines
+4. Ingredients are wrapped based on `ingredientsMaxChars`
+5. Results returned via `receiveTextMeasureResult` port as `ComputedLabelData`
+6. `Label.viewLabelWithComputed` renders SVG with computed font sizes and line breaks
+7. SVG converted to PNG via `requestSvgToPng` port
 
 **Key components:**
-- `Label.elm` - SVG label rendering with QR codes (uses `pablohirafuji/elm-qrcode`)
-- `Ports.elm` - Port definitions for SVG→PNG conversion
-- `main.js` - JavaScript handlers for canvas-based PNG conversion
-- `label_preset` table - Stores named label configurations (dimensions, fonts)
+- `Label.elm` - SVG label rendering with `viewLabelWithComputed` for text-fitted labels
+- `Ports.elm` - Port definitions for text measurement and SVG→PNG conversion
+- `main.js` - JavaScript handlers for text measurement (Canvas measureText) and PNG conversion
+- `label_preset` table - Stores named label configurations (dimensions, fonts, min font sizes)
 
-**Label presets** are stored in PostgreSQL and allow users to configure different label sizes (62mm, 29mm, 12mm tape). The Label Designer page (`/labels`) provides a live preview with sample data.
+**Key types:**
+- `LabelSettings` - Label dimensions, fonts, visibility toggles (from preset)
+- `LabelData` - Content to render (name, ingredients, dates, QR URL)
+- `ComputedLabelData` - JS-measured values: `titleFontSize`, `titleLines`, `ingredientLines`
+
+**Label presets** are stored in PostgreSQL and allow users to configure different label sizes (62mm, 29mm, 12mm tape). The Label Designer page (`/labels`) provides a live preview with editable sample text and real-time text fitting.
 
 ### Service Architecture
 
@@ -214,7 +229,7 @@ Python FastAPI service that receives pre-rendered PNG labels and prints them via
 
 ## Working with Ports
 
-For features requiring JavaScript interop (like SVG→PNG conversion):
+For features requiring JavaScript interop (like text measurement and SVG→PNG conversion):
 
 1. Define ports in `Ports.elm`:
    ```elm
@@ -232,6 +247,10 @@ For features requiring JavaScript interop (like SVG→PNG conversion):
 
 3. Subscribe in `Main.elm` subscriptions function
 4. Forward results to the appropriate page via the update function
+
+**Existing ports:**
+- `requestTextMeasure` / `receiveTextMeasureResult` - Measure text width and compute font sizes/line wrapping
+- `requestSvgToPng` / `receivePngResult` - Convert rendered SVG label to PNG for printing
 
 ## Language Notes
 

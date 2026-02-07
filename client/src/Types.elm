@@ -255,8 +255,9 @@ type alias LabelPreset =
     , separatorThickness : Int
     , separatorColor : String
     , cornerRadius : Int
-    , titleMaxChars : Int
+    , titleMinFontSize : Int
     , ingredientsMaxChars : Int
+    , rotate : Bool
     }
 
 
@@ -281,8 +282,9 @@ type alias LabelPresetForm =
     , separatorThickness : String
     , separatorColor : String
     , cornerRadius : String
-    , titleMaxChars : String
+    , titleMinFontSize : String
     , ingredientsMaxChars : String
+    , rotate : Bool
     , editing : Maybe String
     }
 
@@ -309,7 +311,8 @@ emptyLabelPresetForm =
     , separatorThickness = "1"
     , separatorColor = "#cccccc"
     , cornerRadius = "0"
-    , titleMaxChars = "18"
+    , titleMinFontSize = "24"
     , ingredientsMaxChars = "45"
+    , rotate = False
     , editing = Nothing
     }

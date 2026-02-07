@@ -5,6 +5,158 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Enable citext extension for case-insensitive text
 CREATE EXTENSION IF NOT EXISTS citext;
 
+-- Label preset table: named label configurations for printing
+CREATE TABLE label_preset (
+    name TEXT PRIMARY KEY,
+    width INTEGER NOT NULL DEFAULT 696,
+    height INTEGER NOT NULL DEFAULT 300,
+    qr_size INTEGER NOT NULL DEFAULT 200,
+    padding INTEGER NOT NULL DEFAULT 20,
+    title_font_size INTEGER NOT NULL DEFAULT 48,
+    date_font_size INTEGER NOT NULL DEFAULT 32,
+    small_font_size INTEGER NOT NULL DEFAULT 18,
+    font_family TEXT NOT NULL DEFAULT 'sans-serif',
+    -- Field visibility toggles
+    show_title BOOLEAN NOT NULL DEFAULT TRUE,
+    show_ingredients BOOLEAN NOT NULL DEFAULT FALSE,
+    show_expiry_date BOOLEAN NOT NULL DEFAULT TRUE,
+    show_best_before BOOLEAN NOT NULL DEFAULT FALSE,
+    show_qr BOOLEAN NOT NULL DEFAULT TRUE,
+    show_branding BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Layout settings
+    vertical_spacing INTEGER NOT NULL DEFAULT 10,
+    show_separator BOOLEAN NOT NULL DEFAULT TRUE,
+    separator_thickness INTEGER NOT NULL DEFAULT 1,
+    separator_color TEXT NOT NULL DEFAULT '#cccccc',
+    corner_radius INTEGER NOT NULL DEFAULT 0,
+    -- Text fitting settings
+    title_min_font_size INTEGER NOT NULL DEFAULT 24,
+    ingredients_max_chars INTEGER NOT NULL DEFAULT 45,
+    -- Rotation flag: when TRUE, swap width/height in display and rotate PNG 90° CW for printing
+    rotate BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Insert default presets for all brother_ql supported label sizes
+-- Endless labels use silver ratio (1 + sqrt(2)) for height
+-- Feature tiers: Minimal (<200px), Small (200-350px), Medium (350-600px), Large (≥600px)
+-- rotate: TRUE if height > width (portrait stored, display landscape), FALSE otherwise
+INSERT INTO label_preset (
+    name, width, height, qr_size, padding, title_font_size, date_font_size, small_font_size,
+    show_title, show_ingredients, show_expiry_date, show_best_before, show_qr, show_branding,
+    vertical_spacing, show_separator, separator_thickness, separator_color, corner_radius,
+    title_min_font_size, ingredients_max_chars, rotate
+) VALUES
+    -- ENDLESS LABELS (height = width × silver ratio) - all portrait, rotate=TRUE
+    -- Minimal tier
+    ('12mm endless', 106, ROUND(106 * (1 + SQRT(2)))::INTEGER, 64, 5, 12, 10, 8,
+     TRUE, FALSE, FALSE, FALSE, TRUE, FALSE,
+     3, FALSE, 1, '#cccccc', 0,
+     8, 20, TRUE),
+    -- Small tier
+    ('29mm endless', 306, ROUND(306 * (1 + SQRT(2)))::INTEGER, 180, 10, 24, 16, 12,
+     TRUE, FALSE, TRUE, FALSE, TRUE, FALSE,
+     6, TRUE, 1, '#cccccc', 0,
+     16, 30, TRUE),
+    -- Medium tier
+    ('38mm endless', 413, ROUND(413 * (1 + SQRT(2)))::INTEGER, 200, 15, 36, 24, 16,
+     TRUE, TRUE, TRUE, FALSE, TRUE, FALSE,
+     8, TRUE, 1, '#cccccc', 0,
+     20, 50, TRUE),
+    ('50mm endless', 554, ROUND(554 * (1 + SQRT(2)))::INTEGER, 200, 15, 36, 24, 16,
+     TRUE, TRUE, TRUE, FALSE, TRUE, FALSE,
+     8, TRUE, 1, '#cccccc', 0,
+     20, 50, TRUE),
+    ('54mm endless', 590, ROUND(590 * (1 + SQRT(2)))::INTEGER, 200, 15, 36, 24, 16,
+     TRUE, TRUE, TRUE, FALSE, TRUE, FALSE,
+     8, TRUE, 1, '#cccccc', 0,
+     20, 50, TRUE),
+    -- Large tier
+    ('62mm endless', 696, ROUND(696 * (1 + SQRT(2)))::INTEGER, 200, 20, 48, 32, 18,
+     TRUE, TRUE, TRUE, FALSE, TRUE, TRUE,
+     10, TRUE, 1, '#cccccc', 0,
+     24, 60, TRUE),
+    ('62mm endless (black/red/white)', 696, ROUND(696 * (1 + SQRT(2)))::INTEGER, 200, 20, 48, 32, 18,
+     TRUE, TRUE, TRUE, FALSE, TRUE, TRUE,
+     10, TRUE, 1, '#cccccc', 0,
+     24, 60, TRUE),
+    ('102mm endless', 1164, ROUND(1164 * (1 + SQRT(2)))::INTEGER, 280, 20, 48, 32, 18,
+     TRUE, TRUE, TRUE, FALSE, TRUE, TRUE,
+     10, TRUE, 1, '#cccccc', 0,
+     24, 80, TRUE),
+
+    -- DIE-CUT RECTANGULAR LABELS (fixed dimensions)
+    -- corner_radius = 5% of min(width, height) for rounded corners
+    -- Minimal tier - portrait, rotate=TRUE
+    ('17mm x 54mm die-cut', 165, 566, 100, 5, 12, 10, 8,
+     TRUE, FALSE, FALSE, FALSE, TRUE, FALSE,
+     3, FALSE, 1, '#cccccc', ROUND(LEAST(165, 566) * 0.05)::INTEGER,
+     8, 20, TRUE),
+    ('17mm x 87mm die-cut', 165, 956, 100, 5, 12, 10, 8,
+     TRUE, FALSE, FALSE, FALSE, TRUE, FALSE,
+     3, FALSE, 1, '#cccccc', ROUND(LEAST(165, 956) * 0.05)::INTEGER,
+     8, 20, TRUE),
+    -- Small tier
+    ('23mm x 23mm die-cut', 202, 202, 120, 10, 24, 16, 12,
+     TRUE, FALSE, TRUE, FALSE, TRUE, FALSE,
+     6, TRUE, 1, '#cccccc', ROUND(LEAST(202, 202) * 0.05)::INTEGER,
+     16, 30, FALSE),  -- square, no rotation needed
+    ('29mm x 42mm die-cut', 306, 425, 180, 10, 24, 16, 12,
+     TRUE, FALSE, TRUE, FALSE, TRUE, FALSE,
+     6, TRUE, 1, '#cccccc', ROUND(LEAST(306, 425) * 0.05)::INTEGER,
+     16, 30, TRUE),
+    ('29mm x 90mm die-cut', 306, 991, 180, 10, 24, 16, 12,
+     TRUE, FALSE, TRUE, FALSE, TRUE, FALSE,
+     6, TRUE, 1, '#cccccc', ROUND(LEAST(306, 991) * 0.05)::INTEGER,
+     16, 30, TRUE),
+    -- Medium tier
+    ('39mm x 48mm die-cut', 425, 495, 200, 15, 36, 24, 16,
+     TRUE, TRUE, TRUE, FALSE, TRUE, FALSE,
+     8, TRUE, 1, '#cccccc', ROUND(LEAST(425, 495) * 0.05)::INTEGER,
+     20, 50, TRUE),
+    ('38mm x 90mm die-cut', 413, 991, 200, 15, 36, 24, 16,
+     TRUE, TRUE, TRUE, FALSE, TRUE, FALSE,
+     8, TRUE, 1, '#cccccc', ROUND(LEAST(413, 991) * 0.05)::INTEGER,
+     20, 50, TRUE),
+    ('52mm x 29mm die-cut', 578, 271, 180, 15, 36, 24, 16,
+     TRUE, TRUE, TRUE, FALSE, TRUE, FALSE,
+     8, TRUE, 1, '#cccccc', ROUND(LEAST(578, 271) * 0.05)::INTEGER,
+     20, 50, FALSE),  -- landscape, no rotation needed
+    -- Large tier
+    ('62mm x 29mm die-cut', 696, 271, 180, 20, 48, 32, 18,
+     TRUE, TRUE, TRUE, FALSE, TRUE, TRUE,
+     10, TRUE, 1, '#cccccc', ROUND(LEAST(696, 271) * 0.05)::INTEGER,
+     24, 60, FALSE),  -- landscape, no rotation needed
+    ('62mm x 100mm die-cut', 696, 1109, 200, 20, 48, 32, 18,
+     TRUE, TRUE, TRUE, FALSE, TRUE, TRUE,
+     10, TRUE, 1, '#cccccc', ROUND(LEAST(696, 1109) * 0.05)::INTEGER,
+     24, 60, TRUE),
+    ('102mm x 51mm die-cut', 1164, 526, 250, 20, 48, 32, 18,
+     TRUE, TRUE, TRUE, FALSE, TRUE, TRUE,
+     10, TRUE, 1, '#cccccc', ROUND(LEAST(1164, 526) * 0.05)::INTEGER,
+     24, 80, FALSE),  -- landscape, no rotation needed
+    ('102mm x 153mm die-cut', 1164, 1660, 280, 20, 48, 32, 18,
+     TRUE, TRUE, TRUE, FALSE, TRUE, TRUE,
+     10, TRUE, 1, '#cccccc', ROUND(LEAST(1164, 1660) * 0.05)::INTEGER,
+     24, 80, TRUE),
+
+    -- ROUND DIE-CUT LABELS (square dimensions, no rotation needed)
+    -- Minimal tier
+    ('12mm round die-cut', 94, 94, 60, 5, 10, 8, 6,
+     TRUE, FALSE, FALSE, FALSE, TRUE, FALSE,
+     2, FALSE, 1, '#cccccc', 47,
+     6, 15, FALSE),
+    -- Small tier
+    ('24mm round die-cut', 236, 236, 140, 10, 24, 16, 12,
+     TRUE, FALSE, TRUE, FALSE, TRUE, FALSE,
+     6, TRUE, 1, '#cccccc', 118,
+     16, 30, FALSE),
+    -- Large tier
+    ('58mm round die-cut', 618, 618, 200, 15, 36, 24, 16,
+     TRUE, TRUE, TRUE, FALSE, TRUE, TRUE,
+     8, TRUE, 1, '#cccccc', 309,
+     20, 50, FALSE);
+
 -- Ingredient table: defines ingredients with optional shelf life info
 CREATE TABLE ingredient (
     name CITEXT PRIMARY KEY,
@@ -19,13 +171,12 @@ CREATE TABLE container_type (
 );
 
 -- Batch table: groups portions created together
--- Note: label_preset FK added after label_preset table is created
 CREATE TABLE batch (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     container_id TEXT NOT NULL REFERENCES container_type(name),
     best_before_date DATE NULL,
-    label_preset TEXT NULL,
+    label_preset TEXT NULL REFERENCES label_preset(name) ON UPDATE CASCADE ON DELETE SET NULL,
     details TEXT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -213,12 +364,11 @@ FROM aggregated
 ORDER BY date;
 
 -- Recipe table: reusable templates for batch creation
--- Note: default_label_preset FK added after label_preset table is created
 CREATE TABLE recipe (
     name CITEXT PRIMARY KEY,
     default_portions INTEGER NOT NULL DEFAULT 1,
     default_container_id TEXT NULL REFERENCES container_type(name),
-    default_label_preset TEXT NULL,
+    default_label_preset TEXT NULL REFERENCES label_preset(name) ON UPDATE CASCADE ON DELETE SET NULL,
     details TEXT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -313,67 +463,3 @@ INSERT INTO container_type (name, servings_per_unit) VALUES
     ('Tupper pequeño', 1),
     ('Tupper mediano', 2),
     ('Tupper grande', 4);
-
--- Label preset table: named label configurations for printing
-CREATE TABLE label_preset (
-    name TEXT PRIMARY KEY,
-    width INTEGER NOT NULL DEFAULT 696,
-    height INTEGER NOT NULL DEFAULT 300,
-    qr_size INTEGER NOT NULL DEFAULT 200,
-    padding INTEGER NOT NULL DEFAULT 20,
-    title_font_size INTEGER NOT NULL DEFAULT 48,
-    date_font_size INTEGER NOT NULL DEFAULT 32,
-    small_font_size INTEGER NOT NULL DEFAULT 18,
-    font_family TEXT NOT NULL DEFAULT 'sans-serif',
-    -- Field visibility toggles
-    show_title BOOLEAN NOT NULL DEFAULT TRUE,
-    show_ingredients BOOLEAN NOT NULL DEFAULT FALSE,
-    show_expiry_date BOOLEAN NOT NULL DEFAULT TRUE,
-    show_best_before BOOLEAN NOT NULL DEFAULT FALSE,
-    show_qr BOOLEAN NOT NULL DEFAULT TRUE,
-    show_branding BOOLEAN NOT NULL DEFAULT TRUE,
-    -- Layout settings
-    vertical_spacing INTEGER NOT NULL DEFAULT 10,
-    show_separator BOOLEAN NOT NULL DEFAULT TRUE,
-    separator_thickness INTEGER NOT NULL DEFAULT 1,
-    separator_color TEXT NOT NULL DEFAULT '#cccccc',
-    corner_radius INTEGER NOT NULL DEFAULT 0,
-    -- Truncation settings
-    title_max_chars INTEGER NOT NULL DEFAULT 18,
-    ingredients_max_chars INTEGER NOT NULL DEFAULT 45,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Insert default presets for common tape sizes
-INSERT INTO label_preset (
-    name, width, height, qr_size, padding, title_font_size, date_font_size, small_font_size,
-    show_title, show_ingredients, show_expiry_date, show_best_before, show_qr, show_branding,
-    vertical_spacing, show_separator, separator_thickness, separator_color, corner_radius,
-    title_max_chars, ingredients_max_chars
-) VALUES
-    ('62mm (default)', 696, 300, 200, 20, 48, 32, 18,
-     TRUE, FALSE, TRUE, FALSE, TRUE, TRUE,
-     10, TRUE, 1, '#cccccc', 0,
-     18, 45),
-    ('29mm', 306, 200, 120, 10, 24, 18, 12,
-     TRUE, FALSE, TRUE, FALSE, TRUE, TRUE,
-     6, TRUE, 1, '#cccccc', 0,
-     12, 30),
-    ('12mm', 106, 100, 60, 5, 14, 12, 8,
-     TRUE, FALSE, TRUE, FALSE, TRUE, FALSE,
-     3, FALSE, 1, '#cccccc', 0,
-     8, 20);
-
--- Add foreign key from batch.label_preset to label_preset.name
--- (defined here because label_preset table is created after batch)
-ALTER TABLE batch
-    ADD CONSTRAINT batch_label_preset_fkey
-    FOREIGN KEY (label_preset) REFERENCES label_preset(name)
-    ON UPDATE CASCADE ON DELETE SET NULL;
-
--- Add foreign key from recipe.default_label_preset to label_preset.name
--- (defined here because label_preset table is created after recipe)
-ALTER TABLE recipe
-    ADD CONSTRAINT recipe_default_label_preset_fkey
-    FOREIGN KEY (default_label_preset) REFERENCES label_preset(name)
-    ON UPDATE CASCADE ON DELETE SET NULL;

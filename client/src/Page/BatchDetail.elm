@@ -9,6 +9,7 @@ module Page.BatchDetail exposing
 
 import Api
 import Components
+import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes as Attr exposing (class, href, title)
 import Html.Events exposing (onClick, onInput)
@@ -30,9 +31,12 @@ type alias Model =
     , loading : Bool
     , error : Maybe String
     , previewModal : Maybe PortionPrintData
+    , pendingPreview : Maybe PortionPrintData
     , printingProgress : Maybe PrintingProgress
     , pendingPrintData : List PortionPrintData
     , pendingPngRequests : List String
+    , pendingMeasurements : List String
+    , computedLabelData : Dict String Label.ComputedLabelData
     }
 
 
@@ -48,12 +52,14 @@ type Msg
     | ReturnToFreezerResult (Result Http.Error ())
     | SelectPreset String
     | GotPngResult Ports.PngResult
+    | GotTextMeasureResult Ports.TextMeasureResult
 
 
 type OutMsg
     = NoOp
     | ShowNotification Notification
     | RequestSvgToPng Ports.SvgToPngRequest
+    | RequestTextMeasure Ports.TextMeasureRequest
 
 
 init : String -> String -> List BatchSummary -> List LabelPreset -> ( Model, Cmd Msg )
@@ -90,9 +96,12 @@ init batchId appHost batches labelPresets =
       , loading = True
       , error = Nothing
       , previewModal = Nothing
+      , pendingPreview = Nothing
       , printingProgress = Nothing
       , pendingPrintData = []
       , pendingPngRequests = []
+      , pendingMeasurements = []
+      , computedLabelData = Dict.empty
       }
     , Cmd.batch
         [ Api.fetchBatches GotBatches
@@ -141,20 +150,30 @@ update msg model =
                             , bestBeforeDate = batch.bestBeforeDate
                             }
 
-                        request =
-                            { svgId = Label.labelSvgId printData.portionId
-                            , requestId = printData.portionId
-                            , width = preset.width
-                            , height = preset.height
+                        labelSettings =
+                            presetToSettings preset
+
+                        measureRequest =
+                            { requestId = printData.portionId
+                            , titleText = printData.name
+                            , ingredientsText = printData.ingredients
+                            , fontFamily = preset.fontFamily
+                            , titleFontSize = preset.titleFontSize
+                            , titleMinFontSize = preset.titleMinFontSize
+                            , smallFontSize = preset.smallFontSize
+                            , maxWidth = Label.textMaxWidth labelSettings
+                            , ingredientsMaxChars = preset.ingredientsMaxChars
                             }
                     in
                     ( { model
                         | printingProgress = Just { total = 1, completed = 0, failed = 0 }
                         , pendingPrintData = [ printData ]
                         , pendingPngRequests = [ printData.portionId ]
+                        , pendingMeasurements = [ printData.portionId ]
+                        , computedLabelData = Dict.empty
                       }
                     , Cmd.none
-                    , RequestSvgToPng request
+                    , RequestTextMeasure measureRequest
                     )
 
                 ( _, Nothing ) ->
@@ -186,15 +205,23 @@ update msg model =
                                 )
                                 frozenPortions
 
-                        -- Start SVG→PNG conversion for the first label
-                        firstRequest =
+                        labelSettings =
+                            presetToSettings preset
+
+                        -- Start text measurement for the first label
+                        firstMeasureRequest =
                             case List.head printData of
                                 Just firstData ->
                                     Just
-                                        { svgId = Label.labelSvgId firstData.portionId
-                                        , requestId = firstData.portionId
-                                        , width = preset.width
-                                        , height = preset.height
+                                        { requestId = firstData.portionId
+                                        , titleText = firstData.name
+                                        , ingredientsText = firstData.ingredients
+                                        , fontFamily = preset.fontFamily
+                                        , titleFontSize = preset.titleFontSize
+                                        , titleMinFontSize = preset.titleMinFontSize
+                                        , smallFontSize = preset.smallFontSize
+                                        , maxWidth = Label.textMaxWidth labelSettings
+                                        , ingredientsMaxChars = preset.ingredientsMaxChars
                                         }
 
                                 Nothing ->
@@ -205,11 +232,13 @@ update msg model =
                             | printingProgress = Just { total = quantity, completed = 0, failed = 0 }
                             , pendingPrintData = printData
                             , pendingPngRequests = List.map .portionId printData
+                            , pendingMeasurements = List.map .portionId printData
+                            , computedLabelData = Dict.empty
                           }
                         , Cmd.none
-                        , case firstRequest of
+                        , case firstMeasureRequest of
                             Just req ->
-                                RequestSvgToPng req
+                                RequestTextMeasure req
 
                             Nothing ->
                                 NoOp
@@ -302,6 +331,7 @@ update msg model =
                                         , requestId = nextId
                                         , width = preset.width
                                         , height = preset.height
+                                        , rotate = preset.rotate
                                         }
 
                                 _ ->
@@ -353,6 +383,7 @@ update msg model =
                                         , requestId = nextId
                                         , width = preset.width
                                         , height = preset.height
+                                        , rotate = preset.rotate
                                         }
 
                                 _ ->
@@ -387,8 +418,151 @@ update msg model =
                             outMsg
                     )
 
+        GotTextMeasureResult result ->
+            let
+                -- Store computed data for this label
+                newComputedData =
+                    Dict.insert result.requestId
+                        { titleFontSize = result.titleFittedFontSize
+                        , titleLines = result.titleLines
+                        , ingredientLines = result.ingredientLines
+                        }
+                        model.computedLabelData
+
+                -- Check if this was for a preview request
+                ( newPreviewModal, newPendingPreview ) =
+                    case model.pendingPreview of
+                        Just pending ->
+                            if pending.portionId == result.requestId then
+                                ( Just pending, Nothing )
+
+                            else
+                                ( model.previewModal, model.pendingPreview )
+
+                        Nothing ->
+                            ( model.previewModal, Nothing )
+
+                -- Remove from pending measurements
+                remainingMeasurements =
+                    List.filter (\id -> id /= result.requestId) model.pendingMeasurements
+
+                -- Check if all measurements are done
+                allMeasured =
+                    List.isEmpty remainingMeasurements
+            in
+            if allMeasured then
+                -- All measurements done, start SVG→PNG conversion (if printing)
+                let
+                    firstRequest =
+                        case ( List.head model.pendingPngRequests, model.selectedPreset ) of
+                            ( Just firstId, Just preset ) ->
+                                Just
+                                    { svgId = Label.labelSvgId firstId
+                                    , requestId = firstId
+                                    , width = preset.width
+                                    , height = preset.height
+                                    , rotate = preset.rotate
+                                    }
+
+                            _ ->
+                                Nothing
+                in
+                ( { model
+                    | computedLabelData = newComputedData
+                    , pendingMeasurements = []
+                    , previewModal = newPreviewModal
+                    , pendingPreview = newPendingPreview
+                  }
+                , Cmd.none
+                , case firstRequest of
+                    Just req ->
+                        RequestSvgToPng req
+
+                    Nothing ->
+                        NoOp
+                )
+
+            else
+                -- Request next measurement
+                let
+                    nextMeasureRequest =
+                        case ( List.head remainingMeasurements, model.selectedPreset ) of
+                            ( Just nextId, Just preset ) ->
+                                let
+                                    maybeData =
+                                        List.filter (\d -> d.portionId == nextId) model.pendingPrintData
+                                            |> List.head
+
+                                    labelSettings =
+                                        presetToSettings preset
+                                in
+                                case maybeData of
+                                    Just nextData ->
+                                        Just
+                                            { requestId = nextId
+                                            , titleText = nextData.name
+                                            , ingredientsText = nextData.ingredients
+                                            , fontFamily = preset.fontFamily
+                                            , titleFontSize = preset.titleFontSize
+                                            , titleMinFontSize = preset.titleMinFontSize
+                                            , smallFontSize = preset.smallFontSize
+                                            , maxWidth = Label.textMaxWidth labelSettings
+                                            , ingredientsMaxChars = preset.ingredientsMaxChars
+                                            }
+
+                                    Nothing ->
+                                        Nothing
+
+                            _ ->
+                                Nothing
+                in
+                ( { model
+                    | computedLabelData = newComputedData
+                    , pendingMeasurements = remainingMeasurements
+                    , previewModal = newPreviewModal
+                    , pendingPreview = newPendingPreview
+                  }
+                , Cmd.none
+                , case nextMeasureRequest of
+                    Just req ->
+                        RequestTextMeasure req
+
+                    Nothing ->
+                        NoOp
+                )
+
         OpenPreviewModal portionData ->
-            ( { model | previewModal = Just portionData }, Cmd.none, NoOp )
+            case ( Dict.get portionData.portionId model.computedLabelData, model.selectedPreset ) of
+                ( Just _, _ ) ->
+                    -- Already have computed data, show modal immediately
+                    ( { model | previewModal = Just portionData }, Cmd.none, NoOp )
+
+                ( Nothing, Just preset ) ->
+                    -- Need measurement first
+                    let
+                        labelSettings =
+                            presetToSettings preset
+
+                        measureRequest =
+                            { requestId = portionData.portionId
+                            , titleText = portionData.name
+                            , ingredientsText = portionData.ingredients
+                            , fontFamily = preset.fontFamily
+                            , titleFontSize = preset.titleFontSize
+                            , titleMinFontSize = preset.titleMinFontSize
+                            , smallFontSize = preset.smallFontSize
+                            , maxWidth = Label.textMaxWidth labelSettings
+                            , ingredientsMaxChars = preset.ingredientsMaxChars
+                            }
+                    in
+                    ( { model | pendingPreview = Just portionData }
+                    , Cmd.none
+                    , RequestTextMeasure measureRequest
+                    )
+
+                ( Nothing, Nothing ) ->
+                    -- No preset, fallback to show modal without text fitting
+                    ( { model | previewModal = Just portionData }, Cmd.none, NoOp )
 
         ClosePreviewModal ->
             ( { model | previewModal = Nothing }, Cmd.none, NoOp )
@@ -432,31 +606,14 @@ viewPreviewModal model =
         Just preset ->
             let
                 labelSettings =
-                    { name = preset.name
-                    , width = preset.width
-                    , height = preset.height
-                    , qrSize = preset.qrSize
-                    , padding = preset.padding
-                    , titleFontSize = preset.titleFontSize
-                    , dateFontSize = preset.dateFontSize
-                    , smallFontSize = preset.smallFontSize
-                    , fontFamily = preset.fontFamily
-                    , showTitle = preset.showTitle
-                    , showIngredients = preset.showIngredients
-                    , showExpiryDate = preset.showExpiryDate
-                    , showBestBefore = preset.showBestBefore
-                    , showQr = preset.showQr
-                    , showBranding = preset.showBranding
-                    , verticalSpacing = preset.verticalSpacing
-                    , showSeparator = preset.showSeparator
-                    , separatorThickness = preset.separatorThickness
-                    , separatorColor = preset.separatorColor
-                    , cornerRadius = preset.cornerRadius
-                    , titleMaxChars = preset.titleMaxChars
-                    , ingredientsMaxChars = preset.ingredientsMaxChars
-                    }
+                    presetToSettings preset
+
+                -- Look up computed data for the previewed portion
+                previewComputed =
+                    model.previewModal
+                        |> Maybe.andThen (\p -> Dict.get p.portionId model.computedLabelData)
             in
-            Components.viewPreviewModalSvg labelSettings model.appHost model.previewModal ClosePreviewModal
+            Components.viewPreviewModalSvg labelSettings model.appHost model.previewModal previewComputed ClosePreviewModal
 
         Nothing ->
             Components.viewPreviewModal model.previewModal ClosePreviewModal
@@ -596,45 +753,33 @@ viewHiddenLabels model =
         Just preset ->
             let
                 labelSettings =
-                    { name = preset.name
-                    , width = preset.width
-                    , height = preset.height
-                    , qrSize = preset.qrSize
-                    , padding = preset.padding
-                    , titleFontSize = preset.titleFontSize
-                    , dateFontSize = preset.dateFontSize
-                    , smallFontSize = preset.smallFontSize
-                    , fontFamily = preset.fontFamily
-                    , showTitle = preset.showTitle
-                    , showIngredients = preset.showIngredients
-                    , showExpiryDate = preset.showExpiryDate
-                    , showBestBefore = preset.showBestBefore
-                    , showQr = preset.showQr
-                    , showBranding = preset.showBranding
-                    , verticalSpacing = preset.verticalSpacing
-                    , showSeparator = preset.showSeparator
-                    , separatorThickness = preset.separatorThickness
-                    , separatorColor = preset.separatorColor
-                    , cornerRadius = preset.cornerRadius
-                    , titleMaxChars = preset.titleMaxChars
-                    , ingredientsMaxChars = preset.ingredientsMaxChars
-                    }
+                    presetToSettings preset
             in
             div
                 [ Attr.style "position" "absolute"
                 , Attr.style "left" "-9999px"
                 , Attr.style "top" "-9999px"
                 ]
-                (List.map
+                (List.filterMap
                     (\printData ->
-                        Label.viewLabel labelSettings
-                            { portionId = printData.portionId
-                            , name = printData.name
-                            , ingredients = printData.ingredients
-                            , expiryDate = printData.expiryDate
-                            , bestBeforeDate = printData.bestBeforeDate
-                            , appHost = model.appHost
-                            }
+                        -- Only render labels that have computed data
+                        case Dict.get printData.portionId model.computedLabelData of
+                            Just computed ->
+                                Just
+                                    (Label.viewLabelWithComputed labelSettings
+                                        { portionId = printData.portionId
+                                        , name = printData.name
+                                        , ingredients = printData.ingredients
+                                        , expiryDate = printData.expiryDate
+                                        , bestBeforeDate = printData.bestBeforeDate
+                                        , appHost = model.appHost
+                                        }
+                                        computed
+                                    )
+
+                            Nothing ->
+                                -- Label not yet measured, skip rendering
+                                Nothing
                     )
                     model.pendingPrintData
                 )
@@ -722,3 +867,37 @@ viewPortionRow batch index portion =
                     [ text "🔄" ]
             ]
         ]
+
+
+
+-- HELPERS
+
+
+{-| Convert a LabelPreset to LabelSettings for Label module functions.
+-}
+presetToSettings : LabelPreset -> Label.LabelSettings
+presetToSettings preset =
+    { name = preset.name
+    , width = preset.width
+    , height = preset.height
+    , qrSize = preset.qrSize
+    , padding = preset.padding
+    , titleFontSize = preset.titleFontSize
+    , dateFontSize = preset.dateFontSize
+    , smallFontSize = preset.smallFontSize
+    , fontFamily = preset.fontFamily
+    , showTitle = preset.showTitle
+    , showIngredients = preset.showIngredients
+    , showExpiryDate = preset.showExpiryDate
+    , showBestBefore = preset.showBestBefore
+    , showQr = preset.showQr
+    , showBranding = preset.showBranding
+    , verticalSpacing = preset.verticalSpacing
+    , showSeparator = preset.showSeparator
+    , separatorThickness = preset.separatorThickness
+    , separatorColor = preset.separatorColor
+    , cornerRadius = preset.cornerRadius
+    , titleMinFontSize = preset.titleMinFontSize
+    , ingredientsMaxChars = preset.ingredientsMaxChars
+    , rotate = preset.rotate
+    }

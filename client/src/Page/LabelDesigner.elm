@@ -1,6 +1,6 @@
 module Page.LabelDesigner exposing
     ( Model
-    , Msg
+    , Msg(..)
     , OutMsg(..)
     , init
     , update
@@ -16,6 +16,7 @@ import Html.Attributes as Attr exposing (checked, class, disabled, placeholder, 
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
 import Http
 import Label
+import Ports
 import Types exposing (..)
 
 
@@ -25,6 +26,9 @@ type alias Model =
     , appHost : String
     , loading : Bool
     , deleteConfirm : Maybe String
+    , sampleName : String
+    , sampleIngredients : String
+    , computedLabelData : Maybe Label.ComputedLabelData
     }
 
 
@@ -50,8 +54,11 @@ type Msg
     | FormSeparatorThicknessChanged String
     | FormSeparatorColorChanged String
     | FormCornerRadiusChanged String
-    | FormTitleMaxCharsChanged String
+    | FormTitleMinFontSizeChanged String
     | FormIngredientsMaxCharsChanged String
+    | FormRotateChanged Bool
+    | SampleNameChanged String
+    | SampleIngredientsChanged String
     | SavePreset
     | EditPreset LabelPreset
     | CancelEdit
@@ -63,23 +70,33 @@ type Msg
     | ApplyTemplate62mm
     | ApplyTemplate29mm
     | ApplyTemplate12mm
+    | GotTextMeasureResult Ports.TextMeasureResult
 
 
 type OutMsg
     = NoOp
     | ShowNotification Notification
     | RefreshPresets
+    | RequestTextMeasure Ports.TextMeasureRequest
 
 
-init : String -> List LabelPreset -> ( Model, Cmd Msg )
+init : String -> List LabelPreset -> ( Model, Cmd Msg, OutMsg )
 init appHost presets =
-    ( { presets = presets
-      , form = emptyLabelPresetForm
-      , appHost = appHost
-      , loading = False
-      , deleteConfirm = Nothing
-      }
+    let
+        model =
+            { presets = presets
+            , form = emptyLabelPresetForm
+            , appHost = appHost
+            , loading = False
+            , deleteConfirm = Nothing
+            , sampleName = "Pollo con arroz"
+            , sampleIngredients = "pollo, arroz, verduras, cebolla, ajo"
+            , computedLabelData = Nothing
+            }
+    in
+    ( model
     , Cmd.none
+    , requestMeasurement model
     )
 
 
@@ -111,8 +128,11 @@ update msg model =
             let
                 form =
                     model.form
+
+                newModel =
+                    { model | form = { form | width = val } }
             in
-            ( { model | form = { form | width = val } }, Cmd.none, NoOp )
+            ( newModel, Cmd.none, requestMeasurement newModel )
 
         FormHeightChanged val ->
             let
@@ -125,22 +145,31 @@ update msg model =
             let
                 form =
                     model.form
+
+                newModel =
+                    { model | form = { form | qrSize = val } }
             in
-            ( { model | form = { form | qrSize = val } }, Cmd.none, NoOp )
+            ( newModel, Cmd.none, requestMeasurement newModel )
 
         FormPaddingChanged val ->
             let
                 form =
                     model.form
+
+                newModel =
+                    { model | form = { form | padding = val } }
             in
-            ( { model | form = { form | padding = val } }, Cmd.none, NoOp )
+            ( newModel, Cmd.none, requestMeasurement newModel )
 
         FormTitleFontSizeChanged val ->
             let
                 form =
                     model.form
+
+                newModel =
+                    { model | form = { form | titleFontSize = val } }
             in
-            ( { model | form = { form | titleFontSize = val } }, Cmd.none, NoOp )
+            ( newModel, Cmd.none, requestMeasurement newModel )
 
         FormDateFontSizeChanged val ->
             let
@@ -153,15 +182,21 @@ update msg model =
             let
                 form =
                     model.form
+
+                newModel =
+                    { model | form = { form | smallFontSize = val } }
             in
-            ( { model | form = { form | smallFontSize = val } }, Cmd.none, NoOp )
+            ( newModel, Cmd.none, requestMeasurement newModel )
 
         FormFontFamilyChanged val ->
             let
                 form =
                     model.form
+
+                newModel =
+                    { model | form = { form | fontFamily = val } }
             in
-            ( { model | form = { form | fontFamily = val } }, Cmd.none, NoOp )
+            ( newModel, Cmd.none, requestMeasurement newModel )
 
         FormShowTitleChanged val ->
             let
@@ -195,8 +230,11 @@ update msg model =
             let
                 form =
                     model.form
+
+                newModel =
+                    { model | form = { form | showQr = val } }
             in
-            ( { model | form = { form | showQr = val } }, Cmd.none, NoOp )
+            ( newModel, Cmd.none, requestMeasurement newModel )
 
         FormShowBrandingChanged val ->
             let
@@ -240,19 +278,62 @@ update msg model =
             in
             ( { model | form = { form | cornerRadius = val } }, Cmd.none, NoOp )
 
-        FormTitleMaxCharsChanged val ->
+        FormTitleMinFontSizeChanged val ->
             let
                 form =
                     model.form
+
+                newModel =
+                    { model | form = { form | titleMinFontSize = val } }
             in
-            ( { model | form = { form | titleMaxChars = val } }, Cmd.none, NoOp )
+            ( newModel, Cmd.none, requestMeasurement newModel )
 
         FormIngredientsMaxCharsChanged val ->
             let
                 form =
                     model.form
+
+                newModel =
+                    { model | form = { form | ingredientsMaxChars = val } }
             in
-            ( { model | form = { form | ingredientsMaxChars = val } }, Cmd.none, NoOp )
+            ( newModel, Cmd.none, requestMeasurement newModel )
+
+        FormRotateChanged val ->
+            let
+                form =
+                    model.form
+
+                newModel =
+                    { model | form = { form | rotate = val } }
+            in
+            ( newModel, Cmd.none, requestMeasurement newModel )
+
+        SampleNameChanged val ->
+            let
+                newModel =
+                    { model | sampleName = val }
+            in
+            ( newModel, Cmd.none, requestMeasurement newModel )
+
+        SampleIngredientsChanged val ->
+            let
+                newModel =
+                    { model | sampleIngredients = val }
+            in
+            ( newModel, Cmd.none, requestMeasurement newModel )
+
+        GotTextMeasureResult result ->
+            ( { model
+                | computedLabelData =
+                    Just
+                        { titleFontSize = result.titleFittedFontSize
+                        , titleLines = result.titleLines
+                        , ingredientLines = result.ingredientLines
+                        }
+              }
+            , Cmd.none
+            , NoOp
+            )
 
         SavePreset ->
             if String.isEmpty model.form.name then
@@ -268,35 +349,40 @@ update msg model =
                 )
 
         EditPreset preset ->
-            ( { model
-                | form =
-                    { name = preset.name
-                    , width = String.fromInt preset.width
-                    , height = String.fromInt preset.height
-                    , qrSize = String.fromInt preset.qrSize
-                    , padding = String.fromInt preset.padding
-                    , titleFontSize = String.fromInt preset.titleFontSize
-                    , dateFontSize = String.fromInt preset.dateFontSize
-                    , smallFontSize = String.fromInt preset.smallFontSize
-                    , fontFamily = preset.fontFamily
-                    , showTitle = preset.showTitle
-                    , showIngredients = preset.showIngredients
-                    , showExpiryDate = preset.showExpiryDate
-                    , showBestBefore = preset.showBestBefore
-                    , showQr = preset.showQr
-                    , showBranding = preset.showBranding
-                    , verticalSpacing = String.fromInt preset.verticalSpacing
-                    , showSeparator = preset.showSeparator
-                    , separatorThickness = String.fromInt preset.separatorThickness
-                    , separatorColor = preset.separatorColor
-                    , cornerRadius = String.fromInt preset.cornerRadius
-                    , titleMaxChars = String.fromInt preset.titleMaxChars
-                    , ingredientsMaxChars = String.fromInt preset.ingredientsMaxChars
-                    , editing = Just preset.name
+            let
+                newModel =
+                    { model
+                        | form =
+                            { name = preset.name
+                            , width = String.fromInt preset.width
+                            , height = String.fromInt preset.height
+                            , qrSize = String.fromInt preset.qrSize
+                            , padding = String.fromInt preset.padding
+                            , titleFontSize = String.fromInt preset.titleFontSize
+                            , dateFontSize = String.fromInt preset.dateFontSize
+                            , smallFontSize = String.fromInt preset.smallFontSize
+                            , fontFamily = preset.fontFamily
+                            , showTitle = preset.showTitle
+                            , showIngredients = preset.showIngredients
+                            , showExpiryDate = preset.showExpiryDate
+                            , showBestBefore = preset.showBestBefore
+                            , showQr = preset.showQr
+                            , showBranding = preset.showBranding
+                            , verticalSpacing = String.fromInt preset.verticalSpacing
+                            , showSeparator = preset.showSeparator
+                            , separatorThickness = String.fromInt preset.separatorThickness
+                            , separatorColor = preset.separatorColor
+                            , cornerRadius = String.fromInt preset.cornerRadius
+                            , titleMinFontSize = String.fromInt preset.titleMinFontSize
+                            , ingredientsMaxChars = String.fromInt preset.ingredientsMaxChars
+                            , rotate = preset.rotate
+                            , editing = Just preset.name
+                            }
                     }
-              }
+            in
+            ( newModel
             , Cmd.none
-            , NoOp
+            , requestMeasurement newModel
             )
 
         CancelEdit ->
@@ -346,105 +432,117 @@ update msg model =
             let
                 form =
                     model.form
-            in
-            ( { model
-                | form =
-                    { form
-                        | width = "696"
-                        , height = "300"
-                        , qrSize = "200"
-                        , padding = "20"
-                        , titleFontSize = "48"
-                        , dateFontSize = "32"
-                        , smallFontSize = "18"
-                        , fontFamily = "sans-serif"
-                        , showTitle = True
-                        , showIngredients = False
-                        , showExpiryDate = True
-                        , showBestBefore = False
-                        , showQr = True
-                        , showBranding = True
-                        , verticalSpacing = "10"
-                        , showSeparator = True
-                        , separatorThickness = "1"
-                        , separatorColor = "#cccccc"
-                        , cornerRadius = "0"
-                        , titleMaxChars = "18"
-                        , ingredientsMaxChars = "45"
+
+                newModel =
+                    { model
+                        | form =
+                            { form
+                                | width = "696"
+                                , height = "300"
+                                , qrSize = "200"
+                                , padding = "20"
+                                , titleFontSize = "48"
+                                , dateFontSize = "32"
+                                , smallFontSize = "18"
+                                , fontFamily = "sans-serif"
+                                , showTitle = True
+                                , showIngredients = False
+                                , showExpiryDate = True
+                                , showBestBefore = False
+                                , showQr = True
+                                , showBranding = True
+                                , verticalSpacing = "10"
+                                , showSeparator = True
+                                , separatorThickness = "1"
+                                , separatorColor = "#cccccc"
+                                , cornerRadius = "0"
+                                , titleMinFontSize = "24"
+                                , ingredientsMaxChars = "45"
+                                , rotate = False
+                            }
                     }
-              }
+            in
+            ( newModel
             , Cmd.none
-            , NoOp
+            , requestMeasurement newModel
             )
 
         ApplyTemplate29mm ->
             let
                 form =
                     model.form
-            in
-            ( { model
-                | form =
-                    { form
-                        | width = "306"
-                        , height = "200"
-                        , qrSize = "120"
-                        , padding = "10"
-                        , titleFontSize = "24"
-                        , dateFontSize = "18"
-                        , smallFontSize = "12"
-                        , fontFamily = "sans-serif"
-                        , showTitle = True
-                        , showIngredients = False
-                        , showExpiryDate = True
-                        , showBestBefore = False
-                        , showQr = True
-                        , showBranding = True
-                        , verticalSpacing = "6"
-                        , showSeparator = True
-                        , separatorThickness = "1"
-                        , separatorColor = "#cccccc"
-                        , cornerRadius = "0"
-                        , titleMaxChars = "12"
-                        , ingredientsMaxChars = "30"
+
+                newModel =
+                    { model
+                        | form =
+                            { form
+                                | width = "450"
+                                , height = "200"
+                                , qrSize = "215"
+                                , padding = "10"
+                                , titleFontSize = "30"
+                                , dateFontSize = "18"
+                                , smallFontSize = "12"
+                                , fontFamily = "sans-serif"
+                                , showTitle = True
+                                , showIngredients = True
+                                , showExpiryDate = True
+                                , showBestBefore = False
+                                , showQr = True
+                                , showBranding = True
+                                , verticalSpacing = "8"
+                                , showSeparator = True
+                                , separatorThickness = "1"
+                                , separatorColor = "#cccccc"
+                                , cornerRadius = "0"
+                                , titleMinFontSize = "26"
+                                , ingredientsMaxChars = "80"
+                                , rotate = False
+                            }
                     }
-              }
+            in
+            ( newModel
             , Cmd.none
-            , NoOp
+            , requestMeasurement newModel
             )
 
         ApplyTemplate12mm ->
             let
                 form =
                     model.form
-            in
-            ( { model
-                | form =
-                    { form
-                        | width = "106"
-                        , height = "100"
-                        , qrSize = "60"
-                        , padding = "5"
-                        , titleFontSize = "14"
-                        , dateFontSize = "12"
-                        , smallFontSize = "8"
-                        , fontFamily = "sans-serif"
-                        , showTitle = True
-                        , showIngredients = False
-                        , showExpiryDate = True
-                        , showBestBefore = False
-                        , showQr = True
-                        , showBranding = False
-                        , verticalSpacing = "3"
-                        , showSeparator = False
-                        , separatorThickness = "1"
-                        , separatorColor = "#cccccc"
-                        , cornerRadius = "0"
-                        , titleMaxChars = "8"
-                        , ingredientsMaxChars = "20"
+
+                newModel =
+                    { model
+                        | form =
+                            { form
+                                | width = "106"
+                                , height = "100"
+                                , qrSize = "60"
+                                , padding = "5"
+                                , titleFontSize = "14"
+                                , dateFontSize = "12"
+                                , smallFontSize = "8"
+                                , fontFamily = "sans-serif"
+                                , showTitle = True
+                                , showIngredients = False
+                                , showExpiryDate = True
+                                , showBestBefore = False
+                                , showQr = True
+                                , showBranding = False
+                                , verticalSpacing = "3"
+                                , showSeparator = False
+                                , separatorThickness = "1"
+                                , separatorColor = "#cccccc"
+                                , cornerRadius = "0"
+                                , titleMinFontSize = "8"
+                                , ingredientsMaxChars = "20"
+                                , rotate = False
+                            }
                     }
-              }
+            in
+            ( newModel
             , Cmd.none
-            , NoOp
+            , requestMeasurement newModel
             )
 
 
@@ -631,18 +729,18 @@ viewForm model =
                     ]
                 ]
 
-            -- Truncation section
+            -- Text fitting section
             , div []
-                [ p [ class "text-sm font-medium text-gray-700 mb-2" ] [ text "Truncado de texto" ]
+                [ p [ class "text-sm font-medium text-gray-700 mb-2" ] [ text "Ajuste de texto" ]
                 , div [ class "grid grid-cols-2 gap-3" ]
                     [ div []
-                        [ label [ class "block text-xs text-gray-500 mb-1" ] [ text "Máx. caracteres título" ]
+                        [ label [ class "block text-xs text-gray-500 mb-1" ] [ text "Tamaño min. título (px)" ]
                         , input
                             [ type_ "number"
                             , class "input-field"
-                            , Attr.min "5"
-                            , value model.form.titleMaxChars
-                            , onInput FormTitleMaxCharsChanged
+                            , Attr.min "8"
+                            , value model.form.titleMinFontSize
+                            , onInput FormTitleMinFontSizeChanged
                             ]
                             []
                         ]
@@ -717,6 +815,7 @@ viewForm model =
 
                       else
                         text ""
+                    , viewCheckbox "Rotar 90° para impresión" model.form.rotate FormRotateChanged
                     ]
                 ]
 
@@ -770,28 +869,69 @@ viewPreview model =
 
         sampleData =
             { portionId = "sample-preview"
-            , name = "Pollo con arroz"
-            , ingredients = "pollo, arroz, verduras, cebolla, ajo"
+            , name = model.sampleName
+            , ingredients = model.sampleIngredients
             , expiryDate = "2025-12-31"
             , bestBeforeDate = Just "2025-12-25"
             , appHost = model.appHost
             }
 
-        -- Scale preview to fit card
+        -- Use computed data if available, otherwise use defaults
+        computed =
+            case model.computedLabelData of
+                Just data ->
+                    data
+
+                Nothing ->
+                    { titleFontSize = settings.titleFontSize
+                    , titleLines = [ model.sampleName ]
+                    , ingredientLines = [ model.sampleIngredients ]
+                    }
+
+        -- Scale preview to fit card (use display width for landscape)
         previewScale =
-            min 1.0 (500 / toFloat settings.width)
+            min 1.0 (500 / toFloat (Label.displayWidth settings))
     in
     div [ class "card sticky top-4" ]
         [ h2 [ class "text-lg font-semibold text-gray-800 mb-4" ] [ text "Vista Previa" ]
+        , div [ class "mb-4 p-3 bg-gray-50 rounded-lg" ]
+            [ p [ class "text-sm font-medium text-gray-700 mb-2" ] [ text "Texto de prueba" ]
+            , div [ class "space-y-2" ]
+                [ div []
+                    [ label [ class "block text-xs text-gray-500 mb-1" ] [ text "Nombre" ]
+                    , input
+                        [ type_ "text"
+                        , class "input-field"
+                        , placeholder "Nombre del producto"
+                        , value model.sampleName
+                        , onInput SampleNameChanged
+                        ]
+                        []
+                    ]
+                , div []
+                    [ label [ class "block text-xs text-gray-500 mb-1" ] [ text "Ingredientes" ]
+                    , input
+                        [ type_ "text"
+                        , class "input-field"
+                        , placeholder "ingrediente1, ingrediente2, ..."
+                        , value model.sampleIngredients
+                        , onInput SampleIngredientsChanged
+                        ]
+                        []
+                    ]
+                ]
+            ]
         , div [ class "flex justify-center items-center bg-gray-100 rounded-lg p-4 overflow-auto min-h-[200px]" ]
             [ div
                 [ Attr.style "transform" ("scale(" ++ String.fromFloat previewScale ++ ")")
                 , Attr.style "transform-origin" "center center"
                 ]
-                [ Label.viewLabel settings sampleData ]
+                [ Label.viewLabelWithComputed settings sampleData computed ]
             ]
         , div [ class "mt-4 text-center text-sm text-gray-500" ]
-            [ text (String.fromInt settings.width ++ " x " ++ String.fromInt settings.height ++ " px")
+            [ text (String.fromInt (Label.displayWidth settings) ++ " x " ++ String.fromInt (Label.displayHeight settings) ++ " px (pantalla)")
+            , Html.br [] []
+            , text (String.fromInt settings.width ++ " x " ++ String.fromInt settings.height ++ " px (impresión)")
             , if settings.cornerRadius > 0 then
                 span [ class "ml-2 text-xs text-gray-400" ] [ text "(radio de esquinas solo en vista previa)" ]
 
@@ -821,7 +961,7 @@ viewPresetRow preset =
         [ div []
             [ div [ class "font-medium text-gray-900" ] [ text preset.name ]
             , div [ class "text-sm text-gray-500" ]
-                [ text (String.fromInt preset.width ++ "x" ++ String.fromInt preset.height ++ " px") ]
+                [ text (String.fromInt preset.width ++ "x" ++ String.fromInt preset.height ++ " px (impresión)") ]
             ]
         , div [ class "flex space-x-2" ]
             [ button
@@ -881,6 +1021,27 @@ viewDeleteConfirm maybeName =
             text ""
 
 
+{-| Build a text measure request from current model state.
+-}
+requestMeasurement : Model -> OutMsg
+requestMeasurement model =
+    let
+        settings =
+            formToSettings model.form
+    in
+    RequestTextMeasure
+        { requestId = "preview"
+        , titleText = model.sampleName
+        , ingredientsText = model.sampleIngredients
+        , fontFamily = settings.fontFamily
+        , titleFontSize = settings.titleFontSize
+        , titleMinFontSize = settings.titleMinFontSize
+        , smallFontSize = settings.smallFontSize
+        , maxWidth = Label.textMaxWidth settings
+        , ingredientsMaxChars = settings.ingredientsMaxChars
+        }
+
+
 {-| Convert form values to LabelSettings for preview.
 -}
 formToSettings : LabelPresetForm -> Label.LabelSettings
@@ -905,6 +1066,7 @@ formToSettings form =
     , separatorThickness = Maybe.withDefault 1 (String.toInt form.separatorThickness)
     , separatorColor = form.separatorColor
     , cornerRadius = Maybe.withDefault 0 (String.toInt form.cornerRadius)
-    , titleMaxChars = Maybe.withDefault 18 (String.toInt form.titleMaxChars)
+    , titleMinFontSize = Maybe.withDefault 24 (String.toInt form.titleMinFontSize)
     , ingredientsMaxChars = Maybe.withDefault 45 (String.toInt form.ingredientsMaxChars)
+    , rotate = form.rotate
     }

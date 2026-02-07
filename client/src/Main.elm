@@ -189,12 +189,13 @@ initPage route model =
 
         Route.LabelDesigner ->
             let
-                ( pageModel, pageCmd ) =
+                ( pageModel, pageCmd, outMsg ) =
                     LabelDesigner.init model.appHost model.labelPresets
+
+                newModel =
+                    { model | page = LabelDesignerPage pageModel }
             in
-            ( { model | page = LabelDesignerPage pageModel }
-            , Cmd.map LabelDesignerMsg pageCmd
-            )
+            handleLabelDesignerOutMsg outMsg newModel pageCmd
 
         NotFound ->
             ( { model | page = NotFoundPage }, Cmd.none )
@@ -224,6 +225,7 @@ type Msg
     | DismissNotification
     | NavigateToBatch String
     | GotPngResult Ports.PngResult
+    | GotTextMeasureResult Ports.TextMeasureResult
     | ToggleMobileMenu
     | ToggleConfigDropdown
 
@@ -478,6 +480,21 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        GotTextMeasureResult measureResult ->
+            -- Forward text measurement results to the active page that handles it
+            case model.page of
+                NewBatchPage _ ->
+                    update (NewBatchMsg (NewBatch.GotTextMeasureResult measureResult)) model
+
+                BatchDetailPage _ ->
+                    update (BatchDetailMsg (BatchDetail.GotTextMeasureResult measureResult)) model
+
+                LabelDesignerPage _ ->
+                    update (LabelDesignerMsg (LabelDesigner.GotTextMeasureResult measureResult)) model
+
+                _ ->
+                    ( model, Cmd.none )
+
         DismissNotification ->
             ( { model | notification = Nothing }, Cmd.none )
 
@@ -569,6 +586,14 @@ handleNewBatchOutMsg outMsg model pageCmd =
                 ]
             )
 
+        NewBatch.RequestTextMeasure request ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map NewBatchMsg pageCmd
+                , Ports.requestTextMeasure request
+                ]
+            )
+
 
 handleItemDetailOutMsg : ItemDetail.OutMsg -> Model -> Cmd ItemDetail.Msg -> ( Model, Cmd Msg )
 handleItemDetailOutMsg outMsg model pageCmd =
@@ -606,6 +631,14 @@ handleBatchDetailOutMsg outMsg model pageCmd =
             , Cmd.batch
                 [ Cmd.map BatchDetailMsg pageCmd
                 , Ports.requestSvgToPng request
+                ]
+            )
+
+        BatchDetail.RequestTextMeasure request ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map BatchDetailMsg pageCmd
+                , Ports.requestTextMeasure request
                 ]
             )
 
@@ -694,6 +727,14 @@ handleLabelDesignerOutMsg outMsg model pageCmd =
                 ]
             )
 
+        LabelDesigner.RequestTextMeasure request ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map LabelDesignerMsg pageCmd
+                , Ports.requestTextMeasure request
+                ]
+            )
+
 
 
 -- SUBSCRIPTIONS
@@ -701,7 +742,10 @@ handleLabelDesignerOutMsg outMsg model pageCmd =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Ports.receivePngResult GotPngResult
+    Sub.batch
+        [ Ports.receivePngResult GotPngResult
+        , Ports.receiveTextMeasureResult GotTextMeasureResult
+        ]
 
 
 
