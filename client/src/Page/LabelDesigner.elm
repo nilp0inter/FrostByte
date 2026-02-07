@@ -90,6 +90,7 @@ type alias Model =
     , sampleName : String
     , sampleIngredients : String
     , computedLabelData : Maybe Label.ComputedLabelData
+    , isPrinting : Bool
     }
 
 
@@ -129,10 +130,10 @@ type Msg
     | CancelDelete
     | PresetSaved (Result Http.Error ())
     | PresetDeleted (Result Http.Error ())
-    | ApplyTemplate62mm
-    | ApplyTemplate29mm
-    | ApplyTemplate12mm
     | GotTextMeasureResult Ports.TextMeasureResult
+    | PrintLabel
+    | GotPngResult Ports.PngResult
+    | PrintResult (Result Http.Error ())
 
 
 type OutMsg
@@ -140,6 +141,7 @@ type OutMsg
     | ShowNotification Notification
     | RefreshPresets
     | RequestTextMeasure Ports.TextMeasureRequest
+    | RequestSvgToPng Ports.SvgToPngRequest
 
 
 init : String -> List LabelPreset -> ( Model, Cmd Msg, OutMsg )
@@ -154,6 +156,7 @@ init appHost presets =
             , sampleName = "Pollo con arroz"
             , sampleIngredients = "pollo, arroz, verduras, cebolla, ajo"
             , computedLabelData = Nothing
+            , isPrinting = False
             }
     in
     ( model
@@ -460,6 +463,58 @@ update msg model =
             , NoOp
             )
 
+        PrintLabel ->
+            let
+                settings =
+                    formToSettings model.form
+            in
+            ( { model | isPrinting = True }
+            , Cmd.none
+            , RequestSvgToPng
+                { svgId = "label-svg-sample-preview"
+                , requestId = "preview"
+                , width = settings.width
+                , height = settings.height
+                , rotate = settings.rotate
+                }
+            )
+
+        GotPngResult result ->
+            case result.dataUrl of
+                Just dataUrl ->
+                    let
+                        -- Strip the data URL prefix to get base64
+                        base64Data =
+                            String.replace "data:image/png;base64," "" dataUrl
+
+                        labelType =
+                            model.form.labelType
+                    in
+                    ( model
+                    , Api.printLabelPng base64Data labelType PrintResult
+                    , NoOp
+                    )
+
+                Nothing ->
+                    ( { model | isPrinting = False }
+                    , Cmd.none
+                    , ShowNotification { message = "Error al convertir la etiqueta", notificationType = Error }
+                    )
+
+        PrintResult result ->
+            case result of
+                Ok _ ->
+                    ( { model | isPrinting = False }
+                    , Cmd.none
+                    , ShowNotification { message = "Etiqueta enviada a imprimir", notificationType = Success }
+                    )
+
+                Err _ ->
+                    ( { model | isPrinting = False }
+                    , Cmd.none
+                    , ShowNotification { message = "Error al imprimir la etiqueta", notificationType = Error }
+                    )
+
         SavePreset ->
             if String.isEmpty model.form.name then
                 ( model
@@ -554,123 +609,6 @@ update msg model =
                     , ShowNotification { message = "Error al eliminar preset", notificationType = Error }
                     )
 
-        ApplyTemplate62mm ->
-            let
-                form =
-                    model.form
-
-                newModel =
-                    { model
-                        | form =
-                            { form
-                                | width = "696"
-                                , height = "300"
-                                , qrSize = "200"
-                                , padding = "20"
-                                , titleFontSize = "48"
-                                , dateFontSize = "32"
-                                , smallFontSize = "18"
-                                , fontFamily = "sans-serif"
-                                , showTitle = True
-                                , showIngredients = False
-                                , showExpiryDate = True
-                                , showBestBefore = False
-                                , showQr = True
-                                , showBranding = True
-                                , verticalSpacing = "10"
-                                , showSeparator = True
-                                , separatorThickness = "1"
-                                , separatorColor = "#cccccc"
-                                , cornerRadius = "0"
-                                , titleMinFontSize = "24"
-                                , ingredientsMaxChars = "45"
-                                , rotate = False
-                            }
-                    }
-            in
-            ( newModel
-            , Cmd.none
-            , requestMeasurement newModel
-            )
-
-        ApplyTemplate29mm ->
-            let
-                form =
-                    model.form
-
-                newModel =
-                    { model
-                        | form =
-                            { form
-                                | width = "450"
-                                , height = "200"
-                                , qrSize = "215"
-                                , padding = "10"
-                                , titleFontSize = "30"
-                                , dateFontSize = "18"
-                                , smallFontSize = "12"
-                                , fontFamily = "sans-serif"
-                                , showTitle = True
-                                , showIngredients = True
-                                , showExpiryDate = True
-                                , showBestBefore = False
-                                , showQr = True
-                                , showBranding = True
-                                , verticalSpacing = "8"
-                                , showSeparator = True
-                                , separatorThickness = "1"
-                                , separatorColor = "#cccccc"
-                                , cornerRadius = "0"
-                                , titleMinFontSize = "26"
-                                , ingredientsMaxChars = "80"
-                                , rotate = False
-                            }
-                    }
-            in
-            ( newModel
-            , Cmd.none
-            , requestMeasurement newModel
-            )
-
-        ApplyTemplate12mm ->
-            let
-                form =
-                    model.form
-
-                newModel =
-                    { model
-                        | form =
-                            { form
-                                | width = "106"
-                                , height = "100"
-                                , qrSize = "60"
-                                , padding = "5"
-                                , titleFontSize = "14"
-                                , dateFontSize = "12"
-                                , smallFontSize = "8"
-                                , fontFamily = "sans-serif"
-                                , showTitle = True
-                                , showIngredients = False
-                                , showExpiryDate = True
-                                , showBestBefore = False
-                                , showQr = True
-                                , showBranding = False
-                                , verticalSpacing = "3"
-                                , showSeparator = False
-                                , separatorThickness = "1"
-                                , separatorColor = "#cccccc"
-                                , cornerRadius = "0"
-                                , titleMinFontSize = "8"
-                                , ingredientsMaxChars = "20"
-                                , rotate = False
-                            }
-                    }
-            in
-            ( newModel
-            , Cmd.none
-            , requestMeasurement newModel
-            )
-
 
 view : Model -> Html Msg
 view model =
@@ -698,29 +636,6 @@ viewForm model =
                  else
                     "Nuevo Preset"
                 )
-            ]
-        , div [ class "mb-4" ]
-            [ p [ class "text-sm text-gray-600 mb-2" ] [ text "Plantillas:" ]
-            , div [ class "flex flex-wrap gap-2" ]
-                [ button
-                    [ type_ "button"
-                    , class "px-3 py-1 text-sm bg-frost-100 hover:bg-frost-200 text-frost-700 rounded-lg"
-                    , onClick ApplyTemplate62mm
-                    ]
-                    [ text "62mm" ]
-                , button
-                    [ type_ "button"
-                    , class "px-3 py-1 text-sm bg-frost-100 hover:bg-frost-200 text-frost-700 rounded-lg"
-                    , onClick ApplyTemplate29mm
-                    ]
-                    [ text "29mm" ]
-                , button
-                    [ type_ "button"
-                    , class "px-3 py-1 text-sm bg-frost-100 hover:bg-frost-200 text-frost-700 rounded-lg"
-                    , onClick ApplyTemplate12mm
-                    ]
-                    [ text "12mm" ]
-                ]
             ]
         , Html.form [ onSubmit SavePreset, class "space-y-4" ]
             [ -- Name field
@@ -1110,6 +1025,28 @@ viewPreview model =
               else
                 text ""
             ]
+        , div [ class "mt-4 flex justify-center" ]
+            [ button
+                [ type_ "button"
+                , class "btn-primary flex items-center gap-2"
+                , onClick PrintLabel
+                , disabled (model.isPrinting || model.computedLabelData == Nothing)
+                ]
+                [ if model.isPrinting then
+                    span [ class "animate-spin" ] [ text "⏳" ]
+
+                  else
+                    text ""
+                , text
+                    (if model.isPrinting then
+                        "Imprimiendo..."
+
+                     else
+                        "Imprimir prueba"
+                    )
+                ]
+            ]
+        , viewHiddenLabel model settings sampleData computed
         ]
 
 
@@ -1191,6 +1128,27 @@ viewDeleteConfirm maybeName =
 
         Nothing ->
             text ""
+
+
+{-| Render a hidden label for SVG→PNG conversion.
+-}
+viewHiddenLabel : Model -> Label.LabelSettings -> Label.LabelData -> Label.ComputedLabelData -> Html Msg
+viewHiddenLabel model settings sampleData computed =
+    if model.isPrinting then
+        let
+            -- For printing, we render without corner radius (print dimensions only)
+            printSettings =
+                { settings | cornerRadius = 0 }
+        in
+        div
+            [ Attr.style "position" "absolute"
+            , Attr.style "left" "-9999px"
+            , Attr.style "top" "-9999px"
+            ]
+            [ Label.viewLabelWithComputed printSettings sampleData computed ]
+
+    else
+        text ""
 
 
 {-| Build a text measure request from current model state.

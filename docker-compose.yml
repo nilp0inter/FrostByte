@@ -43,7 +43,7 @@ services:
       PRINTER_MODEL: QL-700
       PRINTER_TAPE: "62"
     volumes:
-      - labels_output:/app/labels_output
+      - ./labels_output:/app/labels_output
     networks:
       - frostbyte_network
 
@@ -79,7 +79,6 @@ services:
 
 volumes:
   postgres_data:
-  labels_output:
   client_dist:
   client_node_modules:
   caddy_data:

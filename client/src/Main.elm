@@ -477,6 +477,9 @@ update msg model =
                 BatchDetailPage _ ->
                     update (BatchDetailMsg (BatchDetail.GotPngResult pngResult)) model
 
+                LabelDesignerPage _ ->
+                    update (LabelDesignerMsg (LabelDesigner.GotPngResult pngResult)) model
+
                 _ ->
                     ( model, Cmd.none )
 
@@ -732,6 +735,14 @@ handleLabelDesignerOutMsg outMsg model pageCmd =
             , Cmd.batch
                 [ Cmd.map LabelDesignerMsg pageCmd
                 , Ports.requestTextMeasure request
+                ]
+            )
+
+        LabelDesigner.RequestSvgToPng request ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map LabelDesignerMsg pageCmd
+                , Ports.requestSvgToPng request
                 ]
             )
 
