@@ -39,6 +39,7 @@ type alias BatchSummary =
     , name : String
     , containerId : String
     , bestBeforeDate : Maybe String
+    , labelPreset : Maybe String
     , batchCreatedAt : String
     , expiryDate : String
     , frozenCount : Int

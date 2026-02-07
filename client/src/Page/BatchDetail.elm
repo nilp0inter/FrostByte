@@ -61,8 +61,23 @@ init batchId appHost batches labelPresets =
             List.filter (\b -> b.batchId == batchId) batches
                 |> List.head
 
+        -- Use batch's stored preset if available, otherwise fall back to first preset
+        batchPreset =
+            maybeBatch
+                |> Maybe.andThen .labelPreset
+                |> Maybe.andThen
+                    (\name ->
+                        List.filter (\p -> p.name == name) labelPresets
+                            |> List.head
+                    )
+
         defaultPreset =
-            List.head labelPresets
+            case batchPreset of
+                Just preset ->
+                    Just preset
+
+                Nothing ->
+                    List.head labelPresets
     in
     ( { batchId = batchId
       , batch = maybeBatch

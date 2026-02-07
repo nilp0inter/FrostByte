@@ -36,6 +36,7 @@ batchSummaryDecoder =
         |> andMap (Decode.field "name" Decode.string)
         |> andMap (Decode.field "container_id" Decode.string)
         |> andMap (Decode.field "best_before_date" (Decode.nullable Decode.string))
+        |> andMap (Decode.field "label_preset" (Decode.nullable Decode.string))
         |> andMap (Decode.field "batch_created_at" Decode.string)
         |> andMap (Decode.field "expiry_date" Decode.string)
         |> andMap (Decode.field "frozen_count" Decode.int)

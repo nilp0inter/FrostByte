@@ -292,8 +292,12 @@ update msg model =
         GotUuidsForBatch uuids ->
             case uuids of
                 batchUuid :: portionUuids ->
+                    let
+                        labelPresetName =
+                            Maybe.map .name model.selectedPreset
+                    in
                     ( model
-                    , Api.createBatch model.form batchUuid portionUuids BatchCreated
+                    , Api.createBatch model.form batchUuid portionUuids labelPresetName BatchCreated
                     , NoOp
                     )
 

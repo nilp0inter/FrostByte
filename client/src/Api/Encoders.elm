@@ -15,11 +15,19 @@ import Types exposing (..)
 import UUID exposing (UUID)
 
 
-encodeBatchRequest : BatchForm -> UUID -> List UUID -> Encode.Value
-encodeBatchRequest form batchUuid portionUuids =
+encodeBatchRequest : BatchForm -> UUID -> List UUID -> Maybe String -> Encode.Value
+encodeBatchRequest form batchUuid portionUuids maybeLabelPreset =
     let
         ingredientNames =
             List.map .name form.selectedIngredients
+
+        labelPresetField =
+            case maybeLabelPreset of
+                Just presetName ->
+                    [ ( "p_label_preset", Encode.string presetName ) ]
+
+                Nothing ->
+                    []
     in
     Encode.object
         ([ ( "p_batch_id", Encode.string (UUID.toString batchUuid) )
@@ -35,6 +43,7 @@ encodeBatchRequest form batchUuid portionUuids =
                 else
                     []
                )
+            ++ labelPresetField
         )
 
 

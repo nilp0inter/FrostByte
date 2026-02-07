@@ -19,11 +19,13 @@ CREATE TABLE container_type (
 );
 
 -- Batch table: groups portions created together
+-- Note: label_preset FK added after label_preset table is created
 CREATE TABLE batch (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     container_id TEXT NOT NULL REFERENCES container_type(name),
     best_before_date DATE NULL,
+    label_preset TEXT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -64,7 +66,8 @@ CREATE OR REPLACE FUNCTION create_batch(
     p_container_id TEXT,
     p_created_at DATE DEFAULT CURRENT_DATE,
     p_expiry_date DATE DEFAULT NULL,
-    p_best_before_date DATE DEFAULT NULL
+    p_best_before_date DATE DEFAULT NULL,
+    p_label_preset TEXT DEFAULT NULL
 )
 RETURNS TABLE (
     batch_id UUID,
@@ -117,8 +120,8 @@ BEGIN
     END IF;
 
     -- Create batch with client-provided UUID
-    INSERT INTO batch (id, name, container_id, best_before_date)
-    VALUES (p_batch_id, p_name, p_container_id, v_best_before);
+    INSERT INTO batch (id, name, container_id, best_before_date, label_preset)
+    VALUES (p_batch_id, p_name, p_container_id, v_best_before, p_label_preset);
 
     -- Link ingredients to batch
     INSERT INTO batch_ingredient (batch_id, ingredient_name)
@@ -139,6 +142,7 @@ SELECT
     b.name,
     b.container_id,
     b.best_before_date,
+    b.label_preset,
     b.created_at AS batch_created_at,
     MIN(p.expiry_date) AS expiry_date,
     COUNT(*) FILTER (WHERE p.status = 'FROZEN') AS frozen_count,
@@ -152,7 +156,7 @@ SELECT
     ) AS ingredients
 FROM batch b
 JOIN portion p ON p.batch_id = b.id
-GROUP BY b.id, b.name, b.container_id, b.best_before_date, b.created_at;
+GROUP BY b.id, b.name, b.container_id, b.best_before_date, b.label_preset, b.created_at;
 
 -- View for portion details including batch info (for QR scan page)
 CREATE VIEW portion_detail AS
@@ -346,3 +350,10 @@ INSERT INTO label_preset (
      TRUE, FALSE, TRUE, FALSE, TRUE, FALSE,
      3, FALSE, 1, '#cccccc', 0,
      8, 20);
+
+-- Add foreign key from batch.label_preset to label_preset.name
+-- (defined here because label_preset table is created after batch)
+ALTER TABLE batch
+    ADD CONSTRAINT batch_label_preset_fkey
+    FOREIGN KEY (label_preset) REFERENCES label_preset(name)
+    ON UPDATE CASCADE ON DELETE SET NULL;
