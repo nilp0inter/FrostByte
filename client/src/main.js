@@ -1,6 +1,59 @@
 import './main.css'
 import { Elm } from './Main.elm'
 
+// Font embedding for SVG to PNG conversion
+// Web fonts loaded via CSS are not available when SVG is serialized to a blob.
+// We fetch the font files and embed them as base64 data URLs.
+let fontCache = null
+
+async function loadFontAsBase64(url, mimeType) {
+  const response = await fetch(url)
+  const arrayBuffer = await response.arrayBuffer()
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+  return `data:${mimeType};base64,${base64}`
+}
+
+async function ensureFontsLoaded() {
+  if (fontCache) return fontCache
+
+  // Fetch font files and convert to base64 data URLs
+  const [regularData, boldData] = await Promise.all([
+    loadFontAsBase64('https://fonts.gstatic.com/s/atkinsonhyperlegible/v12/9Bt23C1KxNDXMspQ1lPyU89-1h6ONRlW45GE5Q.ttf', 'font/ttf'),
+    loadFontAsBase64('https://fonts.gstatic.com/s/atkinsonhyperlegible/v12/9Bt73C1KxNDXMspQ1lPyU89-1h6ONRlW45G8WbcNcw.ttf', 'font/ttf')
+  ])
+
+  // Also register fonts with document.fonts for canvas text measurement
+  const regularFont = new FontFace('Atkinson Hyperlegible', `url(${regularData})`, { weight: '400' })
+  const boldFont = new FontFace('Atkinson Hyperlegible', `url(${boldData})`, { weight: '700' })
+
+  await Promise.all([regularFont.load(), boldFont.load()])
+  document.fonts.add(regularFont)
+  document.fonts.add(boldFont)
+
+  fontCache = { regular: regularData, bold: boldData }
+  return fontCache
+}
+
+function embedFontsInSvg(svgElement, fonts) {
+  const styleElement = document.createElementNS('http://www.w3.org/2000/svg', 'style')
+  styleElement.textContent = `
+    @font-face {
+      font-family: 'Atkinson Hyperlegible';
+      font-weight: 400;
+      src: url('${fonts.regular}') format('truetype');
+    }
+    @font-face {
+      font-family: 'Atkinson Hyperlegible';
+      font-weight: 700;
+      src: url('${fonts.bold}') format('truetype');
+    }
+  `
+  svgElement.insertBefore(styleElement, svgElement.firstChild)
+}
+
+// Preload fonts at startup
+ensureFontsLoaded().catch(e => console.warn('Font preload failed:', e))
+
 // Initialize Elm application
 const app = Elm.Main.init({
   node: document.getElementById('app'),
@@ -29,13 +82,27 @@ app.ports.requestSvgToPng.subscribe(async ({ svgId, requestId, width, height, ro
       return
     }
 
+    // Clone SVG to avoid modifying the displayed element
+    const svgClone = svgElement.cloneNode(true)
+
+    // Ensure fonts are loaded and embed into the clone
+    const fonts = await ensureFontsLoaded()
+    embedFontsInSvg(svgClone, fonts)
+
+    // Ensure SVG has proper dimensions and namespace
+    const svgWidth = svgClone.getAttribute('width') || width
+    const svgHeight = svgClone.getAttribute('height') || height
+    svgClone.setAttribute('width', svgWidth)
+    svgClone.setAttribute('height', svgHeight)
+    svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+
     // Serialize SVG to string
     const serializer = new XMLSerializer()
-    const svgString = serializer.serializeToString(svgElement)
+    const svgString = serializer.serializeToString(svgClone)
 
-    // Create blob and object URL
-    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
-    const url = URL.createObjectURL(svgBlob)
+    // Use base64 encoding for better compatibility
+    const base64 = btoa(unescape(encodeURIComponent(svgString)))
+    const url = `data:image/svg+xml;base64,${base64}`
 
     // Load SVG as image
     const img = new Image()
@@ -93,7 +160,6 @@ app.ports.requestSvgToPng.subscribe(async ({ svgId, requestId, width, height, ro
         dataUrl = canvas.toDataURL('image/png')
       }
 
-      URL.revokeObjectURL(url)
       app.ports.receivePngResult.send({
         requestId,
         dataUrl,
@@ -102,7 +168,6 @@ app.ports.requestSvgToPng.subscribe(async ({ svgId, requestId, width, height, ro
     }
 
     img.onerror = () => {
-      URL.revokeObjectURL(url)
       app.ports.receivePngResult.send({
         requestId,
         dataUrl: null,

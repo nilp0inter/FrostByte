@@ -16,7 +16,7 @@ CREATE TABLE label_preset (
     title_font_size INTEGER NOT NULL DEFAULT 48,
     date_font_size INTEGER NOT NULL DEFAULT 32,
     small_font_size INTEGER NOT NULL DEFAULT 18,
-    font_family TEXT NOT NULL DEFAULT 'sans-serif',
+    font_family TEXT NOT NULL DEFAULT 'Atkinson Hyperlegible, sans-serif',
     -- Field visibility toggles
     show_title BOOLEAN NOT NULL DEFAULT TRUE,
     show_ingredients BOOLEAN NOT NULL DEFAULT FALSE,

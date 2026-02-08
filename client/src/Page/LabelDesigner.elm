@@ -795,7 +795,7 @@ viewForm model =
                     , input
                         [ type_ "text"
                         , class "input-field"
-                        , placeholder "sans-serif"
+                        , placeholder "Atkinson Hyperlegible, sans-serif"
                         , value model.form.fontFamily
                         , onInput FormFontFamilyChanged
                         ]
