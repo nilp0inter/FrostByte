@@ -16,7 +16,9 @@ import Page.History as History
 import Page.Ingredients as Ingredients
 import Page.ItemDetail as ItemDetail
 import Page.LabelDesigner as LabelDesigner
+import Page.LabelDesigner.Types as LabelDesignerTypes
 import Page.NewBatch as NewBatch
+import Page.NewBatch.Types as NewBatchTypes
 import Page.NotFound as NotFound
 import Page.Recipes as Recipes
 import Ports
@@ -477,13 +479,13 @@ update msg model =
             -- Forward PNG results to the active page that handles printing
             case model.page of
                 NewBatchPage _ ->
-                    update (NewBatchMsg (NewBatch.GotPngResult pngResult)) model
+                    update (NewBatchMsg (NewBatchTypes.GotPngResult pngResult)) model
 
                 BatchDetailPage _ ->
                     update (BatchDetailMsg (BatchDetail.GotPngResult pngResult)) model
 
                 LabelDesignerPage _ ->
-                    update (LabelDesignerMsg (LabelDesigner.GotPngResult pngResult)) model
+                    update (LabelDesignerMsg (LabelDesignerTypes.GotPngResult pngResult)) model
 
                 _ ->
                     ( model, Cmd.none )
@@ -492,13 +494,13 @@ update msg model =
             -- Forward text measurement results to the active page that handles it
             case model.page of
                 NewBatchPage _ ->
-                    update (NewBatchMsg (NewBatch.GotTextMeasureResult measureResult)) model
+                    update (NewBatchMsg (NewBatchTypes.GotTextMeasureResult measureResult)) model
 
                 BatchDetailPage _ ->
                     update (BatchDetailMsg (BatchDetail.GotTextMeasureResult measureResult)) model
 
                 LabelDesignerPage _ ->
-                    update (LabelDesignerMsg (LabelDesigner.GotTextMeasureResult measureResult)) model
+                    update (LabelDesignerMsg (LabelDesignerTypes.GotTextMeasureResult measureResult)) model
 
                 _ ->
                     ( model, Cmd.none )
@@ -507,7 +509,7 @@ update msg model =
             -- Forward pinch zoom updates to LabelDesigner page
             case model.page of
                 LabelDesignerPage _ ->
-                    update (LabelDesignerMsg (LabelDesigner.PinchZoomUpdated zoomUpdate)) model
+                    update (LabelDesignerMsg (LabelDesignerTypes.PinchZoomUpdated zoomUpdate)) model
 
                 _ ->
                     ( model, Cmd.none )
@@ -608,10 +610,10 @@ handleDashboardOutMsg outMsg model pageCmd =
 handleNewBatchOutMsg : NewBatch.OutMsg -> Model -> Cmd NewBatch.Msg -> ( Model, Cmd Msg )
 handleNewBatchOutMsg outMsg model pageCmd =
     case outMsg of
-        NewBatch.NoOp ->
+        NewBatchTypes.NoOp ->
             ( model, Cmd.map NewBatchMsg pageCmd )
 
-        NewBatch.ShowNotification notification ->
+        NewBatchTypes.ShowNotification notification ->
             let
                 ( newModel, dismissCmd ) =
                     setNotification notification.message notification.notificationType model
@@ -620,7 +622,7 @@ handleNewBatchOutMsg outMsg model pageCmd =
             , Cmd.batch [ Cmd.map NewBatchMsg pageCmd, dismissCmd ]
             )
 
-        NewBatch.NavigateToHome ->
+        NewBatchTypes.NavigateToHome ->
             ( model
             , Cmd.batch
                 [ Cmd.map NewBatchMsg pageCmd
@@ -628,7 +630,7 @@ handleNewBatchOutMsg outMsg model pageCmd =
                 ]
             )
 
-        NewBatch.NavigateToBatch batchId ->
+        NewBatchTypes.NavigateToBatch batchId ->
             ( model
             , Cmd.batch
                 [ Cmd.map NewBatchMsg pageCmd
@@ -636,7 +638,7 @@ handleNewBatchOutMsg outMsg model pageCmd =
                 ]
             )
 
-        NewBatch.RefreshBatches ->
+        NewBatchTypes.RefreshBatches ->
             ( model
             , Cmd.batch
                 [ Cmd.map NewBatchMsg pageCmd
@@ -645,7 +647,7 @@ handleNewBatchOutMsg outMsg model pageCmd =
                 ]
             )
 
-        NewBatch.RequestSvgToPng request ->
+        NewBatchTypes.RequestSvgToPng request ->
             ( model
             , Cmd.batch
                 [ Cmd.map NewBatchMsg pageCmd
@@ -653,7 +655,7 @@ handleNewBatchOutMsg outMsg model pageCmd =
                 ]
             )
 
-        NewBatch.RequestTextMeasure request ->
+        NewBatchTypes.RequestTextMeasure request ->
             ( model
             , Cmd.batch
                 [ Cmd.map NewBatchMsg pageCmd
@@ -807,10 +809,10 @@ handleRecipesOutMsg outMsg model pageCmd =
 handleLabelDesignerOutMsg : LabelDesigner.OutMsg -> Model -> Cmd LabelDesigner.Msg -> ( Model, Cmd Msg )
 handleLabelDesignerOutMsg outMsg model pageCmd =
     case outMsg of
-        LabelDesigner.NoOp ->
+        LabelDesignerTypes.NoOp ->
             ( model, Cmd.map LabelDesignerMsg pageCmd )
 
-        LabelDesigner.ShowNotification notification ->
+        LabelDesignerTypes.ShowNotification notification ->
             let
                 ( newModel, dismissCmd ) =
                     setNotification notification.message notification.notificationType model
@@ -819,7 +821,7 @@ handleLabelDesignerOutMsg outMsg model pageCmd =
             , Cmd.batch [ Cmd.map LabelDesignerMsg pageCmd, dismissCmd ]
             )
 
-        LabelDesigner.RefreshPresets ->
+        LabelDesignerTypes.RefreshPresets ->
             ( model
             , Cmd.batch
                 [ Cmd.map LabelDesignerMsg pageCmd
@@ -827,7 +829,7 @@ handleLabelDesignerOutMsg outMsg model pageCmd =
                 ]
             )
 
-        LabelDesigner.RequestTextMeasure request ->
+        LabelDesignerTypes.RequestTextMeasure request ->
             ( model
             , Cmd.batch
                 [ Cmd.map LabelDesignerMsg pageCmd
@@ -835,7 +837,7 @@ handleLabelDesignerOutMsg outMsg model pageCmd =
                 ]
             )
 
-        LabelDesigner.RequestSvgToPng request ->
+        LabelDesignerTypes.RequestSvgToPng request ->
             ( model
             , Cmd.batch
                 [ Cmd.map LabelDesignerMsg pageCmd
@@ -843,7 +845,7 @@ handleLabelDesignerOutMsg outMsg model pageCmd =
                 ]
             )
 
-        LabelDesigner.RequestInitPinchZoom config ->
+        LabelDesignerTypes.RequestInitPinchZoom config ->
             ( model
             , Cmd.batch
                 [ Cmd.map LabelDesignerMsg pageCmd
@@ -851,7 +853,7 @@ handleLabelDesignerOutMsg outMsg model pageCmd =
                 ]
             )
 
-        LabelDesigner.RequestSetPinchZoom config ->
+        LabelDesignerTypes.RequestSetPinchZoom config ->
             ( model
             , Cmd.batch
                 [ Cmd.map LabelDesignerMsg pageCmd
