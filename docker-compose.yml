@@ -38,12 +38,14 @@ services:
       dockerfile: Dockerfile
     container_name: frostbyte_printer
     environment:
-      DRY_RUN: "true"
+      DRY_RUN: "false"
       APP_HOST: localhost
-      PRINTER_MODEL: QL-700
+      PRINTER_MODEL: QL-800
       PRINTER_TAPE: "62"
     volumes:
       - ./labels_output:/app/labels_output
+    devices:
+      - /dev/usb/lp0:/dev/usb/lp0
     networks:
       - frostbyte_network
 
