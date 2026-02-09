@@ -1,0 +1,8 @@
+# Production override for Raspberry Pi with physical printer
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+services:
+  printer_service:
+    environment:
+      DRY_RUN: "false"
+    devices:
+      - /dev/usb/lp0:/dev/usb/lp0

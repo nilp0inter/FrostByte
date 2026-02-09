@@ -38,14 +38,12 @@ services:
       dockerfile: Dockerfile
     container_name: frostbyte_printer
     environment:
-      DRY_RUN: "false"
+      DRY_RUN: "true"
       APP_HOST: localhost
       PRINTER_MODEL: QL-800
       PRINTER_TAPE: "62"
     volumes:
       - ./labels_output:/app/labels_output
-    devices:
-      - /dev/usb/lp0:/dev/usb/lp0
     networks:
       - frostbyte_network
 
@@ -53,7 +51,7 @@ services:
     image: node:20-alpine
     container_name: frostbyte_client_builder
     working_dir: /app
-    command: sh -c "apk add --no-cache curl && curl -L -o elm.gz https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz && gunzip elm.gz && chmod +x elm && mv elm /usr/local/bin/ && npm install && npm run build"
+    command: sh -c "apk add --no-cache curl && if [ \"$(uname -m)\" = \"aarch64\" ]; then curl -L https://github.com/punie/elm-linux-arm64/releases/download/0.19.1/elm-aarch64.tar.gz | tar xz; else curl -L -o elm.gz https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz && gunzip elm.gz; fi && chmod +x elm && mv elm /usr/local/bin/ && npm install && npm run build"
     volumes:
       - ./client:/app
       - client_dist:/app/dist
