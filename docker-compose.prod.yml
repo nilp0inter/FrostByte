@@ -7,7 +7,7 @@ services:
     privileged: true
     environment:
       DRY_RUN: "false"
-      BROTHER_QL_PRINTER: "usb://0x04f9:0x209b/000H2G261629"
+      BROTHER_QL_PRINTER: "usb://0x04f9:0x209b"
       BROTHER_QL_MODEL: "QL-800"
     volumes:
       - /dev/bus/usb:/dev/bus/usb
