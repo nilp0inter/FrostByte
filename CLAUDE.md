@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Production Environment
+
+FrostByte runs on a Raspberry Pi Zero 2W (aarch64):
+- **Hostname**: `KitchenLabelPrinter.local`
+- **IP**: `10.40.8.32`
+- **User**: `nil`
+- **Repo path**: `~/FrostByte`
+- **OS**: Debian 13 (trixie)
+
 ## Build and Run Commands
 
 ```bash
@@ -258,11 +267,11 @@ For features requiring JavaScript interop (like text measurement and SVG→PNG c
 
 ## Secrets Management
 
-FrostByte uses [SOPS](https://github.com/getsops/sops) with GPG for secrets management. Encrypted secrets are stored in `.env.prod` and committed to version control.
+FrostByte uses [SOPS](https://github.com/getsops/sops) with GPG (dev) and age (Pi) for secrets management. Encrypted secrets are stored in `.env.prod` and committed to version control.
 
 ### Prerequisites
 - SOPS installed on dev machine and Raspberry Pi
-- GPG key imported (YubiKey on dev, local key on Pi)
+- GPG key (YubiKey on dev), age key on Pi (`~/.config/sops/age/keys.txt`)
 
 ### Edit Secrets
 ```bash
@@ -271,12 +280,17 @@ sops .env.prod
 
 ### Production Deployment (on Raspberry Pi)
 ```bash
-docker compose --env-file <(sops -d .env.prod) \
-  -f docker-compose.yml \
-  -f docker-compose.secrets.yml \
-  -f docker-compose.prod.yml \
-  up -d
+cd ~/FrostByte
+sops -d .env.prod > /tmp/.env.decrypted && \
+  docker compose --env-file /tmp/.env.decrypted \
+    -f docker-compose.yml \
+    -f docker-compose.secrets.yml \
+    -f docker-compose.prod.yml \
+    up -d && \
+  rm /tmp/.env.decrypted
 ```
+
+Note: Process substitution (`<(sops -d ...)`) doesn't work reliably with docker compose.
 
 ### Adding New Secrets
 1. Edit secrets: `sops .env.prod`
