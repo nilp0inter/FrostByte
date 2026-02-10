@@ -8,6 +8,7 @@ module Page.Recipes exposing
     )
 
 import Api
+import Components.MarkdownEditor as MarkdownEditor
 import Data.Recipe
 import Html exposing (Html)
 import Http
@@ -31,6 +32,7 @@ init recipes ingredients containerTypes labelPresets =
       , loading = False
       , deleteConfirm = Nothing
       , showSuggestions = False
+      , detailsEditor = MarkdownEditor.init ""
       }
     , Cmd.none
     )
@@ -148,12 +150,11 @@ update msg model =
             in
             ( { model | form = { form | defaultLabelPreset = presetName } }, Cmd.none, NoOp )
 
-        FormDetailsChanged details ->
-            let
-                form =
-                    model.form
-            in
-            ( { model | form = { form | details = details } }, Cmd.none, NoOp )
+        DetailsEditorMsg subMsg ->
+            ( { model | detailsEditor = MarkdownEditor.update subMsg model.detailsEditor }
+            , Cmd.none
+            , NoOp
+            )
 
         SaveRecipe ->
             if String.trim model.form.name == "" then
@@ -163,8 +164,16 @@ update msg model =
                 ( model, Cmd.none, ShowNotification { id = 0, message = "Debes añadir al menos un ingrediente", notificationType = Error } )
 
             else
-                ( { model | loading = True }
-                , Api.saveRecipe model.form RecipeSaved
+                let
+                    -- Sync details from editor to form
+                    form =
+                        model.form
+
+                    updatedForm =
+                        { form | details = MarkdownEditor.getText model.detailsEditor }
+                in
+                ( { model | loading = True, form = updatedForm }
+                , Api.saveRecipe updatedForm RecipeSaved
                 , NoOp
                 )
 
@@ -181,6 +190,9 @@ update msg model =
                             }
                         )
                         ingredientNames
+
+                details =
+                    Maybe.withDefault "" recipe.details
             in
             ( { model
                 | form =
@@ -191,15 +203,16 @@ update msg model =
                     , defaultContainerId = Maybe.withDefault "" recipe.defaultContainerId
                     , defaultLabelPreset = Maybe.withDefault "" recipe.defaultLabelPreset
                     , editing = Just recipe.name
-                    , details = Maybe.withDefault "" recipe.details
+                    , details = details
                     }
+                , detailsEditor = MarkdownEditor.init details
               }
             , Cmd.none
             , NoOp
             )
 
         CancelEdit ->
-            ( { model | form = Data.Recipe.empty }, Cmd.none, NoOp )
+            ( { model | form = Data.Recipe.empty, detailsEditor = MarkdownEditor.init "" }, Cmd.none, NoOp )
 
         DeleteRecipe name ->
             ( { model | deleteConfirm = Just name }, Cmd.none, NoOp )
@@ -216,7 +229,7 @@ update msg model =
         RecipeSaved result ->
             case result of
                 Ok _ ->
-                    ( { model | loading = False, form = Data.Recipe.empty }
+                    ( { model | loading = False, form = Data.Recipe.empty, detailsEditor = MarkdownEditor.init "" }
                     , Api.fetchRecipes GotRecipes
                     , RefreshRecipesWithNotification { id = 0, message = "Receta guardada", notificationType = Success }
                     )

@@ -4,6 +4,7 @@ module Page.NewBatch.Types exposing
     , OutMsg(..)
     )
 
+import Components.MarkdownEditor as MarkdownEditor
 import Data.Label
 import Dict exposing (Dict)
 import Http
@@ -31,6 +32,7 @@ type alias Model =
     , pendingPngRequests : List String
     , pendingMeasurements : List String
     , computedLabelData : Dict String Data.Label.ComputedLabelData
+    , detailsEditor : MarkdownEditor.Model
     }
 
 
@@ -43,7 +45,6 @@ type Msg
     | FormQuantityChanged String
     | FormCreatedAtChanged String
     | FormExpiryDateChanged String
-    | FormDetailsChanged String
     | SubmitBatchOnly
     | SubmitBatchWithPrint
     | GotUuidsForBatch (List UUID)
@@ -56,6 +57,7 @@ type Msg
     | SelectPreset String
     | GotPngResult Ports.PngResult
     | GotTextMeasureResult Ports.TextMeasureResult
+    | DetailsEditorMsg MarkdownEditor.Msg
 
 
 type OutMsg

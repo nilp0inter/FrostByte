@@ -1,5 +1,6 @@
 module Page.Recipes.View exposing (view)
 
+import Components.MarkdownEditor as MarkdownEditor
 import Html exposing (..)
 import Html.Attributes as Attr exposing (class, disabled, id, placeholder, required, selected, title, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
@@ -92,18 +93,7 @@ viewForm model =
                         )
                     ]
                 ]
-            , div []
-                [ label [ class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Detalles (opcional)" ]
-                , textarea
-                    [ class "input-field font-mono text-sm"
-                    , placeholder "Notas adicionales en formato Markdown.\nEj: ## Preparación\n1. Descongelar\n2. Calentar"
-                    , value model.form.details
-                    , onInput FormDetailsChanged
-                    , Attr.rows 4
-                    ]
-                    []
-                , p [ class "text-xs text-gray-500 mt-1" ] [ text "Se mostrará al escanear el QR de la porción." ]
-                ]
+            , Html.map DetailsEditorMsg (MarkdownEditor.view model.detailsEditor)
             , div [ class "flex justify-end space-x-4 pt-4" ]
                 [ if model.form.editing /= Nothing then
                     button

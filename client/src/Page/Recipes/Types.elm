@@ -4,6 +4,7 @@ module Page.Recipes.Types exposing
     , OutMsg(..)
     )
 
+import Components.MarkdownEditor as MarkdownEditor
 import Http
 import Types exposing (..)
 
@@ -17,6 +18,7 @@ type alias Model =
     , loading : Bool
     , deleteConfirm : Maybe String
     , showSuggestions : Bool
+    , detailsEditor : MarkdownEditor.Model
     }
 
 
@@ -29,7 +31,6 @@ type Msg
     | FormPortionsChanged String
     | FormContainerChanged String
     | FormLabelPresetChanged String
-    | FormDetailsChanged String
     | SaveRecipe
     | EditRecipe Recipe
     | CancelEdit
@@ -40,6 +41,7 @@ type Msg
     | RecipeDeleted (Result Http.Error ())
     | HideSuggestions
     | IngredientKeyDown String
+    | DetailsEditorMsg MarkdownEditor.Msg
 
 
 type OutMsg

@@ -8,14 +8,15 @@ module Page.NewBatch exposing
     )
 
 import Api
+import Components.MarkdownEditor as MarkdownEditor
+import Data.Batch
+import Data.Label
 import Data.LabelPreset
 import Dict exposing (Dict)
 import Html exposing (Html)
 import Http
 import Label
 import Page.NewBatch.Types as NB exposing (..)
-import Data.Batch
-import Data.Label
 import Page.NewBatch.View as View
 import Ports
 import Random
@@ -62,6 +63,7 @@ init currentDate appHost ingredients containerTypes recipes labelPresets =
       , pendingPngRequests = []
       , pendingMeasurements = []
       , computedLabelData = Dict.empty
+      , detailsEditor = MarkdownEditor.init ""
       }
     , Cmd.none
     )
@@ -209,12 +211,11 @@ update msg model =
             in
             ( { model | form = { form | expiryDate = expiryDate } }, Cmd.none, NoOp )
 
-        FormDetailsChanged details ->
-            let
-                form =
-                    model.form
-            in
-            ( { model | form = { form | details = details } }, Cmd.none, NoOp )
+        DetailsEditorMsg subMsg ->
+            ( { model | detailsEditor = MarkdownEditor.update subMsg model.detailsEditor }
+            , Cmd.none
+            , NoOp
+            )
 
         SubmitBatchOnly ->
             if List.isEmpty model.form.selectedIngredients then
@@ -230,8 +231,15 @@ update msg model =
 
                     uuidCount =
                         1 + quantity
+
+                    -- Sync details from editor to form
+                    form =
+                        model.form
+
+                    updatedForm =
+                        { form | details = MarkdownEditor.getText model.detailsEditor }
                 in
-                ( { model | loading = True, printWithSave = False }
+                ( { model | loading = True, printWithSave = False, form = updatedForm }
                 , Random.generate GotUuidsForBatch (Random.list uuidCount UUID.generator)
                 , NoOp
                 )
@@ -250,8 +258,15 @@ update msg model =
 
                     uuidCount =
                         1 + quantity
+
+                    -- Sync details from editor to form
+                    form =
+                        model.form
+
+                    updatedForm =
+                        { form | details = MarkdownEditor.getText model.detailsEditor }
                 in
-                ( { model | loading = True, printWithSave = True }
+                ( { model | loading = True, printWithSave = True, form = updatedForm }
                 , Random.generate GotUuidsForBatch (Random.list uuidCount UUID.generator)
                 , NoOp
                 )
@@ -334,6 +349,7 @@ update msg model =
                             , pendingPngRequests = List.map .portionId printData
                             , pendingMeasurements = List.map .portionId printData
                             , computedLabelData = Dict.empty
+                            , detailsEditor = MarkdownEditor.init ""
                           }
                         , Cmd.none
                         , case firstMeasureRequest of
@@ -349,7 +365,12 @@ update msg model =
                             currentDate =
                                 model.form.createdAt
                         in
-                        ( { model | form = Data.Batch.empty currentDate, loading = False, expiryRequired = False }
+                        ( { model
+                            | form = Data.Batch.empty currentDate
+                            , loading = False
+                            , expiryRequired = False
+                            , detailsEditor = MarkdownEditor.init ""
+                          }
                         , Cmd.none
                         , NavigateToBatch response.batchId
                         )
@@ -688,6 +709,7 @@ update msg model =
                 , showRecipeSuggestions = False
                 , expiryRequired = not hasExpiryInfo && not (List.isEmpty selectedIngredients)
                 , selectedPreset = newSelectedPreset
+                , detailsEditor = MarkdownEditor.init (Maybe.withDefault "" recipe.details)
               }
             , Cmd.none
             , NoOp

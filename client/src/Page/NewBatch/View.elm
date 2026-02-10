@@ -1,5 +1,6 @@
 module Page.NewBatch.View exposing (view)
 
+import Components.MarkdownEditor as MarkdownEditor
 import Data.LabelPreset
 import Dict exposing (Dict)
 import Html exposing (..)
@@ -111,18 +112,7 @@ view model =
                         ]
                     ]
                 , viewPresetSelector model
-                , div []
-                    [ label [ class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Detalles (opcional)" ]
-                    , textarea
-                        [ class "input-field font-mono text-sm"
-                        , placeholder "Notas adicionales en formato Markdown.\nSe heredan de la receta si seleccionas una."
-                        , value model.form.details
-                        , onInput FormDetailsChanged
-                        , Attr.rows 4
-                        ]
-                        []
-                    , p [ class "text-xs text-gray-500 mt-1" ] [ text "Se mostrará al escanear el QR de la porción." ]
-                    ]
+                , Html.map DetailsEditorMsg (MarkdownEditor.view model.detailsEditor)
                 , div [ class "flex justify-end space-x-4 pt-4" ]
                     [ a [ href "/", class "btn-secondary" ] [ text "Cancelar" ]
                     , button
