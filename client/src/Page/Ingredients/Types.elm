@@ -13,6 +13,7 @@ type alias Model =
     , form : IngredientForm
     , loading : Bool
     , deleteConfirm : Maybe String
+    , viewMode : ViewMode
     }
 
 
@@ -22,6 +23,7 @@ type Msg
     | FormExpireDaysChanged String
     | FormBestBeforeDaysChanged String
     | SaveIngredient
+    | StartCreate
     | EditIngredient Ingredient
     | CancelEdit
     | DeleteIngredient String

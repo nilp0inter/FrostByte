@@ -13,6 +13,7 @@ type alias Model =
     , form : ContainerTypeForm
     , loading : Bool
     , deleteConfirm : Maybe String
+    , viewMode : ViewMode
     }
 
 
@@ -21,6 +22,7 @@ type Msg
     | FormNameChanged String
     | FormServingsChanged String
     | SaveContainerType
+    | StartCreate
     | EditContainerType ContainerType
     | CancelEdit
     | DeleteContainerType String

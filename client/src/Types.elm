@@ -21,6 +21,7 @@ module Types exposing
     , RecipeForm
     , RemoteData(..)
     , SelectedIngredient
+    , ViewMode(..)
     )
 
 
@@ -43,6 +44,13 @@ type RemoteData a
     | Loading
     | Loaded a
     | Failed String
+
+
+{-| View mode for CRUD pages: show list or show form
+-}
+type ViewMode
+    = ListMode
+    | FormMode
 
 
 type alias BatchSummary =
