@@ -235,14 +235,22 @@ aggregated AS (
     FROM daily_changes
     WHERE date IS NOT NULL
     GROUP BY date
+),
+date_range AS (
+    SELECT generate_series(
+        COALESCE((SELECT MIN(created_at) FROM portion), CURRENT_DATE),
+        CURRENT_DATE,
+        '1 day'::interval
+    )::date AS date
 )
 SELECT
-    date,
-    added,
-    consumed,
-    SUM(added - consumed) OVER (ORDER BY date) AS frozen_total
-FROM aggregated
-ORDER BY date;
+    d.date,
+    COALESCE(a.added, 0) AS added,
+    COALESCE(a.consumed, 0) AS consumed,
+    SUM(COALESCE(a.added, 0) - COALESCE(a.consumed, 0)) OVER (ORDER BY d.date) AS frozen_total
+FROM date_range d
+LEFT JOIN aggregated a ON d.date = a.date
+ORDER BY d.date;
 
 -- Recipe table: reusable templates for batch creation
 CREATE TABLE recipe (

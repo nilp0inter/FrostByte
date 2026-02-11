@@ -24,14 +24,10 @@ init : List BatchSummary -> List ContainerType -> ( Model, Cmd Msg )
 init batches containerTypes =
     ( { batches = batches
       , containerTypes = containerTypes
-      , loading = List.isEmpty batches
+      , loading = False
       , error = Nothing
       }
-    , if List.isEmpty batches then
-        Api.fetchBatches GotBatches
-
-      else
-        Cmd.none
+    , Cmd.none
     )
 
 

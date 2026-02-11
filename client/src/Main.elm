@@ -65,6 +65,11 @@ type alias Model =
     , batches : List BatchSummary
     , recipes : List Recipe
     , labelPresets : List LabelPreset
+    , ingredientsLoaded : Bool
+    , containerTypesLoaded : Bool
+    , labelPresetsLoaded : Bool
+    , batchesLoaded : Bool
+    , recipesLoaded : Bool
     , page : Page
     , notification : Maybe Notification
     , notificationIdCounter : Int
@@ -105,6 +110,11 @@ init flags url key =
             , batches = []
             , recipes = []
             , labelPresets = []
+            , ingredientsLoaded = False
+            , containerTypesLoaded = False
+            , labelPresetsLoaded = False
+            , batchesLoaded = False
+            , recipesLoaded = False
             , page = NotFoundPage
             , notification = Nothing
             , notificationIdCounter = 0
@@ -278,19 +288,23 @@ update msg model =
                 Ok ingredients ->
                     let
                         newModel =
-                            { model | ingredients = ingredients }
+                            { model | ingredients = ingredients, ingredientsLoaded = True }
                     in
                     maybeInitPage newModel
 
                 Err _ ->
-                    setNotification "Failed to load ingredients" Error model
+                    let
+                        ( newModel, cmd ) =
+                            setNotification "Failed to load ingredients" Error model
+                    in
+                    maybeInitPage { newModel | ingredientsLoaded = True } |> Tuple.mapSecond (\c -> Cmd.batch [ cmd, c ])
 
         GotContainerTypes result ->
             case result of
                 Ok containerTypes ->
                     let
                         newModel =
-                            { model | containerTypes = containerTypes, loading = False }
+                            { model | containerTypes = containerTypes, containerTypesLoaded = True }
                     in
                     maybeInitPage newModel
 
@@ -299,14 +313,14 @@ update msg model =
                         ( newModel, cmd ) =
                             setNotification "Failed to load container types" Error model
                     in
-                    ( { newModel | loading = False }, cmd )
+                    maybeInitPage { newModel | containerTypesLoaded = True } |> Tuple.mapSecond (\c -> Cmd.batch [ cmd, c ])
 
         GotBatches result ->
             case result of
                 Ok batches ->
                     let
                         newModel =
-                            { model | batches = batches, loading = False }
+                            { model | batches = batches, batchesLoaded = True }
                     in
                     maybeInitPage newModel
 
@@ -315,31 +329,39 @@ update msg model =
                         ( newModel, cmd ) =
                             setNotification "Failed to load batches" Error model
                     in
-                    ( { newModel | loading = False }, cmd )
+                    maybeInitPage { newModel | batchesLoaded = True } |> Tuple.mapSecond (\c -> Cmd.batch [ cmd, c ])
 
         GotRecipes result ->
             case result of
                 Ok recipes ->
                     let
                         newModel =
-                            { model | recipes = recipes }
+                            { model | recipes = recipes, recipesLoaded = True }
                     in
                     maybeInitPage newModel
 
                 Err _ ->
-                    setNotification "Failed to load recipes" Error model
+                    let
+                        ( newModel, cmd ) =
+                            setNotification "Failed to load recipes" Error model
+                    in
+                    maybeInitPage { newModel | recipesLoaded = True } |> Tuple.mapSecond (\c -> Cmd.batch [ cmd, c ])
 
         GotLabelPresets result ->
             case result of
                 Ok labelPresets ->
                     let
                         newModel =
-                            { model | labelPresets = labelPresets }
+                            { model | labelPresets = labelPresets, labelPresetsLoaded = True }
                     in
                     maybeInitPage newModel
 
                 Err _ ->
-                    setNotification "Failed to load label presets" Error model
+                    let
+                        ( newModel, cmd ) =
+                            setNotification "Failed to load label presets" Error model
+                    in
+                    maybeInitPage { newModel | labelPresetsLoaded = True } |> Tuple.mapSecond (\c -> Cmd.batch [ cmd, c ])
 
         DashboardMsg subMsg ->
             case model.page of
@@ -549,17 +571,23 @@ maybeInitPage model =
     let
         -- Check if all required data is loaded
         hasRequiredData =
-            not (List.isEmpty model.ingredients)
-                && not (List.isEmpty model.containerTypes)
-                && not (List.isEmpty model.labelPresets)
+            model.ingredientsLoaded
+                && model.containerTypesLoaded
+                && model.labelPresetsLoaded
+                && model.batchesLoaded
+                && model.recipesLoaded
     in
     if hasRequiredData then
         case model.page of
             NotFoundPage ->
-                initPage model.route model
+                let
+                    ( initializedModel, cmd ) =
+                        initPage model.route model
+                in
+                ( { initializedModel | loading = False }, cmd )
 
             _ ->
-                ( model, Cmd.none )
+                ( { model | loading = False }, Cmd.none )
 
     else
         ( model, Cmd.none )

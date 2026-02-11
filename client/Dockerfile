@@ -1,30 +1,25 @@
-# Build stage: compile Elm and build static assets
-FROM --platform=linux/amd64 node:20-alpine AS builder
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Install Elm compiler
-RUN apk add --no-cache curl && \
-    curl -L -o elm.gz https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz && \
-    gunzip elm.gz && \
-    chmod +x elm && \
-    mv elm /usr/local/bin/
+# Install Elm compiler with architecture detection
+# Handles both x86_64 (amd64) and aarch64 (Raspberry Pi)
+RUN apk add --no-cache curl tar && \
+    if [ "$(uname -m)" = "aarch64" ]; then \
+        curl -L https://github.com/punie/elm-linux-arm64/releases/download/0.19.1/elm-aarch64.tar.gz | tar xz && \
+        chmod +x elm && \
+        mv elm /usr/local/bin/; \
+    else \
+        curl -L -o elm.gz https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz && \
+        gunzip elm.gz && \
+        chmod +x elm && \
+        mv elm /usr/local/bin/; \
+    fi
 
 # Copy package files and install dependencies
-COPY package*.json ./
-RUN npm ci
+# This layer will be cached unless package.json changes
+COPY package.json package-lock.json ./
+RUN npm install
 
-# Copy source files
-COPY . .
-
-# Build the application
-RUN npm run build
-
-# Production stage: minimal image with just the static files
-FROM alpine:latest
-
-# Copy built assets from builder
-COPY --from=builder /app/dist /dist
-
-# This image just holds the files - they'll be mounted as a volume
-CMD ["echo", "Static files available in /dist"]
+# Default command to build the app
+CMD ["npm", "run", "build"]
