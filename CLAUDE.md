@@ -38,11 +38,43 @@ docker compose logs -f [service_name]  # postgres, postgrest, printer_service, c
 docker compose down
 ```
 
-**Testing changes:**
+**Testing changes (rebuild mode):**
 1. Make changes to Elm files in `client/src/`
 2. Run `docker compose up --build -d` to rebuild
 3. Check `docker compose logs client_builder` for compilation errors
 4. If successful, test at http://localhost/
+
+### Development Mode with Hot Reloading
+
+For faster iteration, use the dev overlay which runs Vite's dev server with hot module replacement (HMR):
+
+```bash
+# Start dev mode (Vite HMR - no rebuild needed for changes)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Watch Vite dev server logs
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f client_dev
+
+# Stop dev mode
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+```
+
+**How it works:**
+- `client_dev` service runs Vite dev server on port 5173
+- Caddy proxies non-API requests to Vite (instead of serving static files)
+- Source code is mounted, so edits trigger automatic browser refresh
+- API routing (`/api/db/*`, `/api/printer/*`) works identically to production
+
+**Request flow (dev mode):**
+```
+Browser :80 → Caddy → client_dev:5173 (Vite HMR)
+Browser :80 → Caddy → postgrest:3000 (/api/db/*)
+Browser :80 → Caddy → printer_service:8000 (/api/printer/*)
+```
+
+**Key files:**
+- `docker-compose.dev.yml` - Dev overlay (adds `client_dev` service, swaps Caddyfile)
+- `gateway/Caddyfile.dev` - Dev Caddyfile (proxies to Vite instead of static files)
 
 **Available routes to test:**
 - http://localhost/ - Dashboard (batch list)
@@ -296,9 +328,18 @@ For features requiring JavaScript interop (like text measurement and SVG→PNG c
 - **Final image**: Minimal Alpine with static files (~5MB), supports amd64 and arm64
 
 ### Development Workflow
-- `docker compose up --build -d` builds locally using `target: builder`
-- Source mounted at runtime, rebuilds on container start
-- Named volume `client_node_modules` persists dependencies for faster rebuilds
+Two modes available:
+
+**Rebuild mode** (`docker compose up --build -d`):
+- Builds Elm on each `docker compose up --build`
+- Best for testing production-like builds
+
+**Hot reload mode** (`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`):
+- Runs Vite dev server with HMR
+- Instant browser refresh on file changes (no rebuild needed)
+- Best for active development
+
+Both modes use named volume `client_node_modules` for faster dependency handling.
 
 ### Production Workflow (Raspberry Pi)
 - Pi pulls pre-built image from `ghcr.io/nilp0inter/frostbyte-client:latest`
@@ -308,8 +349,11 @@ For features requiring JavaScript interop (like text measurement and SVG→PNG c
 
 ### Key Files
 - `client/Dockerfile` - Multi-stage: builder (Node+Elm) -> final (Alpine+static)
-- `docker-compose.yml` - Dev config (uses `target: builder`)
+- `docker-compose.yml` - Base config (uses `target: builder`)
+- `docker-compose.dev.yml` - Dev overlay (Vite HMR, hot reloading)
 - `docker-compose.prod.yml` - Prod overrides (uses pre-built image)
+- `gateway/Caddyfile` - Production Caddyfile (serves static files)
+- `gateway/Caddyfile.dev` - Dev Caddyfile (proxies to Vite)
 - `.github/workflows/build-client.yml` - CI pipeline
 
 ### RemoteData Pattern for Loading State
