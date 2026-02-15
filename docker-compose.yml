@@ -85,6 +85,8 @@ services:
   gobackup:
     image: huacnlee/gobackup:latest
     container_name: frostbyte_gobackup
+    ports:
+      - "2703:2703"
     volumes:
       - ./backup:/etc/gobackup:ro
     depends_on:

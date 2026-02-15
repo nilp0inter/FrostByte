@@ -161,7 +161,8 @@ Text Measure Request → JS Canvas measureText() → Computed Data (font size, w
 │   /          → Elm SPA (static files from client_dist volume)    │
 │   /api/db/*  → PostgREST (:3000) → PostgreSQL                    │
 │   /api/printer/* → Printer Service (:8000)                       │
-│   /backup/*  → GoBackup Web UI (:2703)                           │
+└─────────────────────────────────────────────────────────────────┘
+│ GoBackup (:2703) → Web UI for backup management                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -501,7 +502,7 @@ FrostByte uses [GoBackup](https://gobackup.github.io/) for automated PostgreSQL 
 - `docker-compose.secrets.yml` - Maps SOPS secrets to gobackup environment
 
 ### Web UI
-Access backup status at: `http://KitchenLabelPrinter.local/backup/`
+Access backup status at: `http://KitchenLabelPrinter.local:2703/`
 
 ### Manual Backup
 ```bash
