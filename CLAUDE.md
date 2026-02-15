@@ -519,3 +519,42 @@ docker exec frostbyte_gobackup gobackup perform frostbyte_db
 1. Create account at healthchecks.io
 2. Create new check with 24-hour period and grace period
 3. Copy the ping URL (format: `https://healthchecks.io/ping/uuid`)
+
+### JSON Backup via PostgREST API
+
+In addition to PostgreSQL dumps, GoBackup also exports all tables as JSON files via the PostgREST API. This provides a human-readable backup that can be used for partial restores or data inspection.
+
+**How it works:**
+- `backup/json-backup.sh` runs as a `before_script` in GoBackup
+- Fetches all 9 tables via `curl` to PostgREST API
+- Saves JSON files to `/data/json/` volume
+- JSON files are archived alongside the SQL dump
+
+**Tables backed up (in dependency order):**
+1. `label_preset`, `image`, `ingredient`, `container_type` (no dependencies)
+2. `batch`, `recipe` (depend on level 1)
+3. `portion`, `batch_ingredient`, `recipe_ingredient` (depend on level 2)
+
+**Key files:**
+- `backup/json-backup.sh` - Backup script (runs inside gobackup container)
+- `backup/json-restore.sh` - Restore script (runs from dev machine or Pi)
+- `backup/Dockerfile` - Custom gobackup image with scripts baked in
+
+**Limitation:** GoBackup does not fail if `before_script` fails - it logs the error but continues. The SQL dump is the authoritative backup; JSON is supplementary.
+
+### Restoring from JSON Backup
+
+To restore data from a JSON backup (e.g., after wiping the database):
+
+```bash
+# 1. Download and extract the backup archive from B2
+# 2. Locate the JSON files in data/json/
+
+# 3. Restore to the Pi (from dev machine)
+API_URL=http://10.40.8.32/api/db ./backup/json-restore.sh /path/to/backup/data/json
+
+# Or restore to local dev environment
+API_URL=http://localhost/api/db ./backup/json-restore.sh /path/to/backup/data/json
+```
+
+The restore script POSTs each table in dependency order with `Prefer: resolution=ignore-duplicates` header for idempotency.
