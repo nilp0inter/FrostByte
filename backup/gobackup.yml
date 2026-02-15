@@ -24,6 +24,7 @@ models:
         path: frostbyte
         access_key_id: $B2_KEY_ID
         secret_access_key: $B2_APP_KEY
+        storage_class: STANDARD
         timeout: 600
         max_retries: 5
     compress_with:
