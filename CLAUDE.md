@@ -241,6 +241,11 @@ Python FastAPI service that receives pre-rendered PNG labels and prints them via
 - Direct printing via brother_ql library (no PIL/image generation)
 - Configurable via environment variables: `DRY_RUN`, `PRINTER_MODEL`, `PRINTER_TAPE`
 
+**USB access requirements (production):**
+- Container mounts `/dev/bus/usb` (not all of `/dev`) with `device_cgroup_rules: ['c 189:* rwm']` for USB device access — no `privileged: true` needed
+- `/run/udev:/run/udev:ro` is mounted so `libusb` can discover USB devices after re-enumeration (e.g., printer standby/wake)
+- Printing runs in a subprocess (`multiprocessing`) so each job gets fresh USB state — the long-running uvicorn process caches stale `libusb` handles after the printer re-enumerates from standby/wake, causing "Device not found" errors
+
 ## API Reference
 
 | Endpoint | Method | Purpose |
