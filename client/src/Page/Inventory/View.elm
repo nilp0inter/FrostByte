@@ -19,7 +19,6 @@ view model =
             div [ class "card text-center py-12" ]
                 [ span [ class "text-6xl" ] [ text "❄️" ]
                 , p [ class "mt-4 text-gray-600" ] [ text "No hay porciones en el congelador" ]
-                , a [ href "/new", class "btn-primary inline-block mt-4" ] [ text "Añadir primera porción" ]
                 ]
 
           else
@@ -48,7 +47,11 @@ viewBatchesTable model =
                 ingredients
     in
     div [ class "card overflow-hidden" ]
-        [ div [ class "overflow-x-auto" ]
+        [ div [ class "flex items-center justify-between mb-4 px-4 pt-4" ]
+            [ h2 [ class "text-lg font-semibold text-gray-800" ] [ text "Lotes existentes" ]
+            , a [ href "/new", class "btn-primary" ] [ text "+ Nuevo Lote" ]
+            ]
+        , div [ class "overflow-x-auto" ]
             [ table [ class "w-full" ]
                 [ thead [ class "bg-gray-50" ]
                     [ tr []
