@@ -292,29 +292,13 @@ CONTAINER=frostbyte_postgres DB_USER=kitchen_user DB_NAME=kitchen_db \
 ./common/backup/event-restore.sh /path/to/backup/data/json/events.csv
 ```
 
-The restore script disables the event trigger, loads all events via `COPY`, resets the sequence, then calls `frostbyte_logic.replay_all_events()` to rebuild all projections.
+The restore script uses `docker exec` so it must run on the same machine as the containers. For remote restore, SCP the CSV to the Pi first, then run the script there.
+
 ### Migrating from Old (Pre-Event-Sourcing) Backup
 
 ```bash
 ./apps/frostbyte/database/migrate-from-json.py /path/to/old/backup/data/json > events.sql
 docker exec -i frostbyte_postgres psql -U kitchen_user -d kitchen_db < events.sql
-```
-
-## Production Migration (from pre-monorepo)
-
-For existing Pi deployment with old DB/user names:
-```bash
-# 1. Stop all services
-docker compose ... down
-# 2. Start only postgres
-docker compose up -d postgres
-# 3. Rename database and user (connect as postgres superuser)
-docker exec frostbyte_postgres psql -U postgres -d postgres -c \
-  "ALTER DATABASE frostbyte_db RENAME TO kitchen_db;"
-docker exec frostbyte_postgres psql -U postgres -d kitchen_db -c \
-  "ALTER ROLE frostbyte_user RENAME TO kitchen_user;"
-# 4. Stop postgres, deploy with new config
-docker compose down
 ```
 
 ## Language Notes
