@@ -12,6 +12,19 @@ services:
     networks:
       - frostbyte_network
 
+  labelmaker_client_dev:
+    build:
+      context: ./apps/labelmaker/client
+      target: builder
+    container_name: labelmaker_client_dev
+    working_dir: /app
+    command: npm run dev -- --host 0.0.0.0
+    volumes:
+      - ./apps/labelmaker/client:/app
+      - labelmaker_client_node_modules:/app/node_modules
+    networks:
+      - frostbyte_network
+
   caddy:
     volumes:
       - ./common/gateway/Caddyfile.dev:/etc/caddy/Caddyfile:ro
@@ -21,4 +34,6 @@ services:
       printer_service:
         condition: service_started
       client_dev:
+        condition: service_started
+      labelmaker_client_dev:
         condition: service_started

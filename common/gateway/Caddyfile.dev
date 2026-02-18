@@ -2,6 +2,10 @@
     auto_https off
 }
 
+# =============================================================================
+# FrostByte (:80) — Dev mode
+# =============================================================================
+
 :80 {
     # Proxy to Vite dev server (non-API requests)
     @notApi {
@@ -11,13 +15,50 @@
         reverse_proxy client_dev:5173
     }
 
-    # Proxy PostgREST API requests
+    # Proxy PostgREST API requests (pinned to frostbyte_api schema)
     handle /api/db/* {
         uri strip_prefix /api/db
-        reverse_proxy postgrest:3000
+        reverse_proxy postgrest:3000 {
+            header_up Accept-Profile frostbyte_api
+            header_up Content-Profile frostbyte_api
+        }
     }
 
     # Proxy Printer Service API requests
+    handle /api/printer/* {
+        uri strip_prefix /api/printer
+        reverse_proxy printer_service:8000
+    }
+
+    encode gzip
+
+    log {
+        output stdout
+        format console
+    }
+}
+
+# =============================================================================
+# LabelMaker (:8080) — Dev mode
+# =============================================================================
+
+:8080 {
+    @notApi {
+        not path /api/*
+    }
+    handle @notApi {
+        reverse_proxy labelmaker_client_dev:5173
+    }
+
+    # Proxy PostgREST API requests (pinned to labelmaker_api schema)
+    handle /api/db/* {
+        uri strip_prefix /api/db
+        reverse_proxy postgrest:3000 {
+            header_up Accept-Profile labelmaker_api
+            header_up Content-Profile labelmaker_api
+        }
+    }
+
     handle /api/printer/* {
         uri strip_prefix /api/printer
         reverse_proxy printer_service:8000

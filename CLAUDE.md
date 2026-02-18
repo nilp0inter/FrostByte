@@ -13,14 +13,23 @@ FrostByte/
 │   ├── printer_service/       # Python FastAPI label printing service
 │   └── backup/                # GoBackup config + scripts
 ├── apps/
-│   └── frostbyte/             # Freezer management app
+│   ├── frostbyte/             # Freezer management app (:80)
+│   │   ├── client/            # Elm SPA frontend
+│   │   └── database/          # SQL schemas, migrations, seed data
+│   │       ├── migrations/    # Data schema migrations (persistent)
+│   │       ├── logic.sql      # frostbyte_logic schema (idempotent)
+│   │       ├── api.sql        # frostbyte_api schema (idempotent)
+│   │       ├── seed.sql       # Seed data as events
+│   │       ├── migrate.sh     # Auto-migration (runs in db_migrator container)
+│   │       └── deploy.sh      # Manual redeploy from host
+│   └── labelmaker/            # Label template designer (:8080)
 │       ├── client/            # Elm SPA frontend
 │       └── database/          # SQL schemas, migrations, seed data
 │           ├── migrations/    # Data schema migrations (persistent)
-│           ├── logic.sql      # frostbyte_logic schema (idempotent)
-│           ├── api.sql        # frostbyte_api schema (idempotent)
+│           ├── logic.sql      # labelmaker_logic schema (idempotent)
+│           ├── api.sql        # labelmaker_api schema (idempotent)
 │           ├── seed.sql       # Seed data as events
-│           ├── migrate.sh     # Auto-migration (runs in db_migrator container)
+│           ├── migrate.sh     # Auto-migration (runs in labelmaker_db_migrator container)
 │           └── deploy.sh      # Manual redeploy from host
 ├── docker-compose.yml         # Base config (common + app services)
 ├── docker-compose.dev.yml     # Dev overlay (Vite HMR)
@@ -28,7 +37,9 @@ FrostByte/
 └── docker-compose.secrets.yml # SOPS secrets mapping
 ```
 
-**App-specific docs:** See `apps/frostbyte/CLAUDE.md` for FrostByte architecture, database schemas, Elm client structure, and API reference.
+**App-specific docs:**
+- `apps/frostbyte/CLAUDE.md` — FrostByte architecture, database schemas, Elm client, API reference
+- `apps/labelmaker/CLAUDE.md` — LabelMaker architecture, database schemas, Elm client, API reference
 
 ### Adding a New App
 
@@ -36,14 +47,16 @@ FrostByte/
 2. Use schema prefix `<appname>_data`, `<appname>_logic`, `<appname>_api`
 3. Add app-specific services to `docker-compose.yml` under the app section
 4. Add `<appname>_api` to PostgREST's `PGRST_DB_SCHEMA` (comma-separated)
-5. Create `apps/<appname>/CLAUDE.md` for app-specific docs
+5. Add a Caddy site block on a new port with `Accept-Profile` / `Content-Profile` headers pinned to `<appname>_api`
+6. Create `apps/<appname>/CLAUDE.md` for app-specific docs
 
 ### Shared Database
 
 - **Database**: `kitchen_db` (PostgreSQL 15)
 - **User**: `kitchen_user`
 - **Schema namespacing**: Each app prefixes its schemas (e.g., `frostbyte_data`, `frostbyte_logic`, `frostbyte_api`)
-- **PostgREST**: Exposes `frostbyte_api` schema (add more with comma-separated `PGRST_DB_SCHEMA`)
+- **PostgREST**: Exposes `frostbyte_api,labelmaker_api` schemas (comma-separated `PGRST_DB_SCHEMA`)
+- **Schema isolation**: Caddy injects `Accept-Profile` and `Content-Profile` headers per port, so each app is pinned to its own schema without clients needing to set headers
 
 ## Production Environment
 
@@ -108,9 +121,10 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 
 **Request flow (dev mode):**
 ```
-Browser :80 → Caddy → client_dev:5173 (Vite HMR)
-Browser :80 → Caddy → postgrest:3000 (/api/db/*)
-Browser :80 → Caddy → printer_service:8000 (/api/printer/*)
+Browser :80   → Caddy → client_dev:5173 (FrostByte Vite HMR)
+Browser :8080 → Caddy → labelmaker_client_dev:5173 (LabelMaker Vite HMR)
+Browser :80/:8080 → Caddy → postgrest:3000 (/api/db/*)
+Browser :80/:8080 → Caddy → printer_service:8000 (/api/printer/*)
 ```
 
 **Key files:**
@@ -118,6 +132,8 @@ Browser :80 → Caddy → printer_service:8000 (/api/printer/*)
 - `common/gateway/Caddyfile.dev` - Dev Caddyfile (proxies to Vite instead of static files)
 
 **Available routes to test:**
+
+*FrostByte (:80):*
 - http://localhost/ - Menu (visual card grid of what's in the freezer)
 - http://localhost/inventory - Inventory (batch table with servings)
 - http://localhost/new - Create new batch (with recipe search)
@@ -129,21 +145,30 @@ Browser :80 → Caddy → printer_service:8000 (/api/printer/*)
 - http://localhost/containers - Container type management
 - http://localhost/labels - Label designer (preset management)
 
+*LabelMaker (:8080):*
+- http://localhost:8080/ - Home (welcome page)
+
 ### Service Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ Caddy (:80)                                                      │
-│   /          → Elm SPA (static files from client_dist volume)    │
-│   /api/db/*  → PostgREST (:3000) → PostgreSQL                    │
-│   /api/printer/* → Printer Service (:8000)                       │
-└─────────────────────────────────────────────────────────────────┘
-│ db_migrator (one-shot) → runs migrations on startup, then exits  │
-│ GoBackup (:2703) → Web UI for backup management                  │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Caddy                                                                     │
+│   :80  (FrostByte)                                                        │
+│     /          → Elm SPA (static files from client_dist volume)           │
+│     /api/db/*  → PostgREST (:3000) [Accept-Profile: frostbyte_api]        │
+│     /api/printer/* → Printer Service (:8000)                              │
+│   :8080 (LabelMaker)                                                      │
+│     /          → Elm SPA (static files from labelmaker_client_dist)       │
+│     /api/db/*  → PostgREST (:3000) [Accept-Profile: labelmaker_api]       │
+│     /api/printer/* → Printer Service (:8000)                              │
+└──────────────────────────────────────────────────────────────────────────┘
+│ db_migrator (one-shot) → FrostByte migrations, then exits                 │
+│ labelmaker_db_migrator (one-shot) → LabelMaker migrations, then exits     │
+│ GoBackup (:2703) → Web UI for backup management                           │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Startup order:** `postgres` (healthy) → `db_migrator` (runs + exits) → `postgrest` → `caddy`
+**Startup order:** `postgres` (healthy) → `db_migrator` + `labelmaker_db_migrator` (run + exit) → `postgrest` → `caddy`
 
 ### Printer Service
 
@@ -187,13 +212,15 @@ Both modes use named volume `client_node_modules` for faster dependency handling
 - Caddy serves static files from shared volume
 
 ### Key Files
-- `apps/frostbyte/client/Dockerfile` - Multi-stage: builder (Node+Elm) -> final (Alpine+static)
+- `apps/frostbyte/client/Dockerfile` - FrostByte multi-stage: builder (Node+Elm) -> final (Alpine+static)
+- `apps/labelmaker/client/Dockerfile` - LabelMaker multi-stage: builder (Node+Elm) -> final (Alpine+static)
 - `docker-compose.yml` - Base config (uses `target: builder`)
 - `docker-compose.dev.yml` - Dev overlay (Vite HMR, hot reloading)
-- `docker-compose.prod.yml` - Prod overrides (uses pre-built image)
-- `common/gateway/Caddyfile` - Production Caddyfile (serves static files)
-- `common/gateway/Caddyfile.dev` - Dev Caddyfile (proxies to Vite)
-- `.github/workflows/build-client.yml` - Client CI pipeline
+- `docker-compose.prod.yml` - Prod overrides (uses pre-built images)
+- `common/gateway/Caddyfile` - Production Caddyfile (serves static files on :80 and :8080)
+- `common/gateway/Caddyfile.dev` - Dev Caddyfile (proxies to Vite on :80 and :8080)
+- `.github/workflows/build-client.yml` - FrostByte client CI pipeline
+- `.github/workflows/build-labelmaker-client.yml` - LabelMaker client CI pipeline
 - `.github/workflows/build-printer.yml` - Printer service CI pipeline
 - `docker-compose.secrets.yml` - Maps SOPS secrets to service environments
 

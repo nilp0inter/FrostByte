@@ -1,8 +1,12 @@
-# FrostByte Caddy Configuration
+# Kitchen Management Stack — Caddy Configuration
 {
     # For local development, use HTTP only
     auto_https off
 }
+
+# =============================================================================
+# FrostByte (:80)
+# =============================================================================
 
 :80 {
     # Serve the Elm PWA static files
@@ -18,10 +22,13 @@
         file_server
     }
 
-    # Proxy PostgREST API requests
+    # Proxy PostgREST API requests (pinned to frostbyte_api schema)
     handle /api/db/* {
         uri strip_prefix /api/db
-        reverse_proxy postgrest:3000
+        reverse_proxy postgrest:3000 {
+            header_up Accept-Profile frostbyte_api
+            header_up Content-Profile frostbyte_api
+        }
     }
 
     # Proxy Printer Service API requests
@@ -34,6 +41,44 @@
     encode gzip
 
     # Logging
+    log {
+        output stdout
+        format console
+    }
+}
+
+# =============================================================================
+# LabelMaker (:8080)
+# =============================================================================
+
+:8080 {
+    root * /srv/labelmaker
+
+    @notApi {
+        not path /api/*
+    }
+
+    handle @notApi {
+        try_files {path} /index.html
+        file_server
+    }
+
+    # Proxy PostgREST API requests (pinned to labelmaker_api schema)
+    handle /api/db/* {
+        uri strip_prefix /api/db
+        reverse_proxy postgrest:3000 {
+            header_up Accept-Profile labelmaker_api
+            header_up Content-Profile labelmaker_api
+        }
+    }
+
+    handle /api/printer/* {
+        uri strip_prefix /api/printer
+        reverse_proxy printer_service:8000
+    }
+
+    encode gzip
+
     log {
         output stdout
         format console

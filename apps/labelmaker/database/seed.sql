@@ -1,0 +1,2 @@
+-- LabelMaker Seed Data (as events)
+-- No seed data yet

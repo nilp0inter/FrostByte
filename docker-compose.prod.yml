@@ -19,3 +19,9 @@ services:
     command: ["sh", "-c", "cp -r /dist/* /output/"]
     volumes:
       - client_dist:/output
+
+  labelmaker_client_builder:
+    image: ghcr.io/nilp0inter/labelmaker-client:latest
+    command: ["sh", "-c", "cp -r /dist/* /output/"]
+    volumes:
+      - labelmaker_client_dist:/output
