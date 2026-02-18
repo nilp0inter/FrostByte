@@ -1,0 +1,16 @@
+[Unit]
+Description=Kitchen Management Stack
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{ repo_path }}
+ExecStartPre=/usr/bin/bash -c 'sops -d .env.prod > /tmp/.env.decrypted'
+ExecStart=/usr/bin/docker compose --env-file /tmp/.env.decrypted -f docker-compose.yml -f docker-compose.secrets.yml -f docker-compose.prod.yml up -d --remove-orphans
+ExecStartPost=/usr/bin/rm -f /tmp/.env.decrypted
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+
+[Install]
+WantedBy=multi-user.target

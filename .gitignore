@@ -45,3 +45,7 @@ npm-debug.log*
 coverage/
 .nyc_output/
 labels_output
+
+# Nix
+result
+.direnv/

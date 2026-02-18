@@ -1,0 +1,19 @@
+version: '3'
+
+tasks:
+  bootstrap:
+    desc: Provision a fresh Pi from scratch
+    dir: deploy
+    cmd: ansible-playbook bootstrap.yml
+
+  deploy:
+    desc: Deploy latest code to Pi
+    dir: deploy
+    cmd: ansible-playbook deploy.yml
+
+  restore:
+    desc: Restore event data from CSV backup
+    dir: deploy
+    cmd: ansible-playbook restore.yml -e backup_path={{.BACKUP}}
+    requires:
+      vars: [BACKUP]

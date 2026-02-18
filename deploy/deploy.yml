@@ -1,0 +1,48 @@
+---
+- name: Deploy latest code to Pi
+  hosts: pi
+  gather_facts: false
+
+  tasks:
+    - name: Pull latest code
+      ansible.builtin.git:
+        repo: https://github.com/nilp0inter/FrostByte.git
+        dest: "{{ repo_path }}"
+        version: main
+
+    - name: Pull Docker images
+      ansible.builtin.command:
+        cmd: >
+          docker compose
+          -f docker-compose.yml
+          -f docker-compose.prod.yml
+          pull
+        chdir: "{{ repo_path }}"
+      changed_when: true
+
+    - name: Update systemd service
+      become: true
+      ansible.builtin.template:
+        src: templates/kitchen.service.j2
+        dest: /etc/systemd/system/kitchen.service
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Restart kitchen service
+      become: true
+      ansible.builtin.systemd:
+        name: kitchen
+        state: restarted
+        daemon_reload: true
+
+    - name: Prune old Docker images
+      ansible.builtin.command:
+        cmd: docker image prune -f
+      register: prune_result
+      changed_when: "'Total reclaimed space: 0B' not in prune_result.stdout"
+
+  handlers:
+    - name: Reload systemd
+      become: true
+      ansible.builtin.systemd:
+        daemon_reload: true

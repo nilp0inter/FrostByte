@@ -1,0 +1,88 @@
+---
+- name: Provision a fresh Raspberry Pi
+  hosts: pi
+  gather_facts: false
+
+  tasks:
+    - name: Install system packages
+      become: true
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-plugin
+          - sops
+          - git
+        state: present
+        update_cache: true
+
+    - name: Add user to docker group
+      become: true
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true
+
+    - name: Create SOPS age key directory
+      ansible.builtin.file:
+        path: ~/.config/sops/age
+        state: directory
+        mode: "0700"
+
+    - name: Decrypt and deploy age key
+      block:
+        - name: Decrypt age key locally (requires yubikey)
+          ansible.builtin.command:
+            cmd: sops -d {{ playbook_dir }}/secrets/age-key.sops
+          delegate_to: localhost
+          register: age_key_plaintext
+          changed_when: false
+
+        - name: Write age key to Pi
+          ansible.builtin.copy:
+            content: "{{ age_key_plaintext.stdout }}\n"
+            dest: ~/.config/sops/age/keys.txt
+            mode: "0600"
+
+    - name: Clone repository
+      ansible.builtin.git:
+        repo: https://github.com/nilp0inter/FrostByte.git
+        dest: "{{ repo_path }}"
+        version: main
+        update: false
+
+    - name: Install systemd service
+      become: true
+      ansible.builtin.template:
+        src: templates/kitchen.service.j2
+        dest: /etc/systemd/system/kitchen.service
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Enable kitchen service
+      become: true
+      ansible.builtin.systemd:
+        name: kitchen
+        enabled: true
+        daemon_reload: true
+
+    - name: Pull Docker images
+      ansible.builtin.command:
+        cmd: >
+          docker compose
+          -f docker-compose.yml
+          -f docker-compose.prod.yml
+          pull
+        chdir: "{{ repo_path }}"
+      changed_when: true
+
+    - name: Start kitchen service
+      become: true
+      ansible.builtin.systemd:
+        name: kitchen
+        state: started
+
+  handlers:
+    - name: Reload systemd
+      become: true
+      ansible.builtin.systemd:
+        daemon_reload: true

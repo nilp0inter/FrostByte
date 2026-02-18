@@ -31,6 +31,18 @@ FrostByte/
 │           ├── seed.sql       # Seed data as events
 │           ├── migrate.sh     # Auto-migration (runs in labelmaker_db_migrator container)
 │           └── deploy.sh      # Manual redeploy from host
+├── deploy/                    # Ansible deployment automation
+│   ├── inventory.yml          # Single host: KitchenLabelPrinter.local
+│   ├── ansible.cfg            # SSH user, inventory path
+│   ├── bootstrap.yml          # Full Pi provisioning (run once on new hardware)
+│   ├── deploy.yml             # App deployment (run on every update)
+│   ├── restore.yml            # Disaster recovery (restore from CSV backup)
+│   ├── secrets/
+│   │   └── age-key.sops       # Age private key encrypted with SOPS (GPG-only)
+│   └── templates/
+│       └── kitchen.service.j2 # Systemd service unit (templated)
+├── flake.nix                  # Nix dev shell (ansible, sops, go-task)
+├── Taskfile.yml               # Task runner (bootstrap, deploy, restore)
 ├── docker-compose.yml         # Base config (common + app services)
 ├── docker-compose.dev.yml     # Dev overlay (Vite HMR)
 ├── docker-compose.prod.yml    # Prod overrides (pre-built images)
@@ -66,13 +78,43 @@ Runs on a Raspberry Pi Zero 2W (aarch64):
 - **User**: `nil`
 - **Repo path**: `~/FrostByte`
 - **OS**: Debian 13 (trixie)
-- **Systemd service**: `frostbyte.service` (starts on boot)
+- **Systemd service**: `kitchen.service` (starts on boot, templated from `deploy/templates/kitchen.service.j2`)
+
+### Deployment Automation (Ansible)
+
+All deployment is automated via Ansible playbooks. Requires the Nix dev shell (`direnv allow` or `nix develop`).
 
 ```bash
-# Service management
-sudo systemctl status frostbyte
-sudo systemctl restart frostbyte
-sudo systemctl stop frostbyte
+# Deploy latest code to Pi (routine updates)
+task deploy
+
+# Provision a fresh Pi from scratch (requires yubikey for age key decryption)
+task bootstrap
+
+# Restore event data from CSV backup (after bootstrap)
+task restore BACKUP=/path/to/extracted/backup/data/json
+
+# Test SSH connectivity
+cd deploy && ansible all -m ping
+```
+
+**How it works:**
+- `task deploy` — runs `git pull`, `docker compose pull`, restarts `kitchen.service` on the Pi
+- `task bootstrap` — installs packages, deploys age key (from SOPS-encrypted `deploy/secrets/age-key.sops`), clones repo, installs systemd service, starts stack
+- `task restore` — copies CSV event files to Pi, runs `event-restore.sh` for each app
+
+**One-time setup (age key):**
+```bash
+# Encrypt the Pi's age key with SOPS (uses yubikey GPG)
+sops -e ~/.config/sops/age/keys.txt > deploy/secrets/age-key.sops
+```
+
+### Manual Service Management (on Pi)
+
+```bash
+sudo systemctl status kitchen
+sudo systemctl restart kitchen
+sudo systemctl stop kitchen
 ```
 
 ## Build and Run Commands
@@ -223,6 +265,12 @@ Both modes use named volumes (`frostbyte_client_node_modules`, `labelmaker_clien
 - `.github/workflows/build-labelmaker-client.yml` - LabelMaker client CI pipeline
 - `.github/workflows/build-printer.yml` - Printer service CI pipeline
 - `docker-compose.secrets.yml` - Maps SOPS secrets to service environments
+- `deploy/bootstrap.yml` - Ansible playbook: provision fresh Pi
+- `deploy/deploy.yml` - Ansible playbook: routine deployment
+- `deploy/restore.yml` - Ansible playbook: disaster recovery data restore
+- `deploy/templates/kitchen.service.j2` - Systemd service unit template
+- `Taskfile.yml` - Task runner entry points (bootstrap, deploy, restore)
+- `flake.nix` - Nix dev shell (ansible, sops, go-task)
 
 ## Secrets Management
 
@@ -238,6 +286,13 @@ sops .env.prod
 ```
 
 ### Production Deployment (on Raspberry Pi)
+
+Deployment is automated via Ansible. From the dev machine:
+```bash
+task deploy
+```
+
+The systemd service (`kitchen.service`) handles SOPS decryption and docker compose orchestration automatically. For manual deployment (if needed):
 ```bash
 cd ~/FrostByte
 sops -d .env.prod > /tmp/.env.decrypted && \
