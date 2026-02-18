@@ -108,14 +108,18 @@ services:
     container_name: frostbyte_gobackup
     ports:
       - "2703:2703"
+    environment:
+      PGHOST: postgres
+      PGUSER: frostbyte_user
+      PGPASSWORD: frostbyte_password
+      PGDATABASE: frostbyte_db
+      EVENT_TABLE: data.event
     volumes:
       - ./backup/gobackup.yml:/etc/gobackup/gobackup.yml:ro
       - gobackup_json:/data/json
     depends_on:
       postgres:
         condition: service_healthy
-      caddy:
-        condition: service_started
     networks:
       - frostbyte_network
 

@@ -605,46 +605,38 @@ docker exec frostbyte_gobackup gobackup perform frostbyte_db
 2. Create new check with 24-hour period and grace period
 3. Copy the ping URL (format: `https://healthchecks.io/ping/uuid`)
 
-### JSON Backup via PostgREST API
+### CSV Event Backup
 
-In addition to PostgreSQL dumps, GoBackup also exports all tables as JSON files via the PostgREST API. This provides a human-readable backup that can be used for partial restores or data inspection.
+In addition to PostgreSQL dumps, GoBackup also exports the event table as a CSV file via `psql COPY`. Since FrostByte uses event sourcing, all state can be rebuilt from the event table alone.
 
 **How it works:**
-- `backup/json-backup.sh` runs as a `before_script` in GoBackup
-- Fetches `event` table first (primary backup — all state can be rebuilt from events)
-- Also fetches all 9 projection tables as supplementary backups
-- Saves JSON files to `/data/json/` volume
-- JSON files are archived alongside the SQL dump
-
-**Tables backed up:**
-1. `event` (primary — authoritative source of truth)
-2. `label_preset`, `image`, `ingredient`, `container_type` (supplementary)
-3. `batch`, `recipe` (supplementary)
-4. `portion`, `batch_ingredient`, `recipe_ingredient` (supplementary)
+- `backup/event-backup.sh` runs as a `before_script` in GoBackup
+- Uses `psql` with `COPY TO STDOUT` to dump the `data.event` table as CSV
+- Saves to `/data/json/events.csv` (reuses existing archive path)
+- CSV is portable — no schema/role names embedded in the data
 
 **Key files:**
-- `backup/json-backup.sh` - Backup script (runs inside gobackup container)
-- `backup/json-restore.sh` - Restore script (runs from dev machine or Pi)
-- `backup/Dockerfile` - Custom gobackup image with scripts baked in
+- `backup/event-backup.sh` - CSV backup script (runs inside gobackup container)
+- `backup/event-restore.sh` - CSV restore script (runs from dev machine or Pi)
+- `backup/Dockerfile` - Custom gobackup image with psql and scripts baked in
 
-**Limitation:** GoBackup does not fail if `before_script` fails - it logs the error but continues. The SQL dump is the authoritative backup; JSON is supplementary.
+### Restoring from CSV Event Backup
 
-### Restoring from JSON Backup
-
-To restore data from a JSON backup (e.g., after wiping the database):
+To restore data from a CSV event backup (e.g., after wiping the database):
 
 ```bash
 # 1. Download and extract the backup archive from B2
-# 2. Locate the JSON files in data/json/
+# 2. Locate events.csv in data/json/
 
 # 3. Restore to the Pi (from dev machine)
-API_URL=http://10.40.8.32/api/db ./backup/json-restore.sh /path/to/backup/data/json
+CONTAINER=frostbyte_postgres DB_USER=frostbyte_user DB_NAME=frostbyte_db \
+  ./backup/event-restore.sh /path/to/backup/data/json/events.csv
 
-# Or restore to local dev environment
-API_URL=http://localhost/api/db ./backup/json-restore.sh /path/to/backup/data/json
+# Or restore to local dev environment (uses defaults)
+./backup/event-restore.sh /path/to/backup/data/json/events.csv
 ```
 
-The restore script POSTs only the `event` table — projections rebuild automatically via the trigger on INSERT. Uses `Prefer: resolution=ignore-duplicates` for idempotency.
+The restore script disables the event trigger, loads all events via `COPY`, resets the sequence, then calls `logic.replay_all_events()` to rebuild all projections.
 
 ### Migrating from Old (Pre-Event-Sourcing) Backup
 
