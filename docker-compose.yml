@@ -18,6 +18,23 @@ services:
     networks:
       - frostbyte_network
 
+  db_migrator:
+    image: postgres:15-alpine
+    container_name: frostbyte_db_migrator
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGUSER: frostbyte_user
+      PGDATABASE: frostbyte_db
+      PGHOST: postgres
+    volumes:
+      - ./database:/database:ro
+    entrypoint: ["/database/migrate.sh"]
+    networks:
+      - frostbyte_network
+    restart: "no"
+
   postgrest:
     image: postgrest/postgrest:v12.0.2
     container_name: frostbyte_postgrest
@@ -29,6 +46,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db_migrator:
+        condition: service_completed_successfully
     networks:
       - frostbyte_network
 
