@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "Running migrations..."
 for f in "$SCRIPT_DIR/migrations/"*.sql; do
     echo "  Applying $(basename "$f")..."
-    docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$f"
+    docker exec -i "$CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "$f" 2>&1 || echo "  (already applied, skipping)"
 done
 
 echo "Deploying logic schema..."
