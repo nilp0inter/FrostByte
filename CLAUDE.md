@@ -177,6 +177,7 @@ Text Measure Request → JS Canvas measureText() → Computed Data (font size, w
 │   /api/db/*  → PostgREST (:3000) → PostgreSQL                    │
 │   /api/printer/* → Printer Service (:8000)                       │
 └─────────────────────────────────────────────────────────────────┘
+│ db_migrator (one-shot) → runs migrations on startup, then exits  │
 │ GoBackup (:2703) → Web UI for backup management                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -214,21 +215,29 @@ database/
 ├── logic.sql                   # Logic schema (event handlers, replay) — idempotent
 ├── api.sql                     # API schema (views, RPC functions) — idempotent
 ├── seed.sql                    # Seed data as events
-├── deploy.sh                   # Redeploy logic+api on running database
+├── migrate.sh                  # Auto-migration (runs in db_migrator container on every startup)
+├── deploy.sh                   # Manual redeploy from host (uses docker exec)
 └── migrate-from-json.py        # Convert old JSON backup to events
 ```
 
 ### Deploying Schema Changes
 
-To update logic or API functions on a running database without data loss:
+Schema changes are **auto-applied on every `docker compose up`** by the `db_migrator` one-shot container. It runs migrations, redeploys logic/api schemas, and replays events before PostgREST starts. No manual intervention needed after updates.
+
+**Startup order:** `postgres` (healthy) → `db_migrator` (runs + exits) → `postgrest` → `caddy`
+
+For manual redeploy from the host (without restarting containers):
 
 ```bash
 ./database/deploy.sh
 # Equivalent to:
-# psql < logic.sql   (DROP + CREATE logic schema)
-# psql < api.sql     (DROP + CREATE api schema)
+# psql < migrations/*.sql  (apply pending migrations)
+# psql < logic.sql          (DROP + CREATE logic schema)
+# psql < api.sql            (DROP + CREATE api schema)
 # SELECT logic.replay_all_events();  (rebuild projections)
 ```
+
+**Note:** After manual `deploy.sh`, restart PostgREST to refresh its schema cache: `docker restart frostbyte_postgrest`
 
 ### Elm Client Structure
 
@@ -499,7 +508,9 @@ Both modes use named volume `client_node_modules` for faster dependency handling
 - `database/migrations/001-initial.sql` - Data schema (tables, indexes)
 - `database/logic.sql` - Logic schema (event handlers, replay)
 - `database/api.sql` - API schema (views, RPC functions)
-- `database/deploy.sh` - Redeploy logic+api on running database
+- `database/migrate.sh` - Auto-migration script (runs in `db_migrator` container on every startup)
+- `database/deploy.sh` - Manual redeploy from host (uses `docker exec`)
+- `docker-compose.secrets.yml` - Maps SOPS secrets to service environments (including `db_migrator`)
 
 ### RemoteData Pattern for Loading State
 
