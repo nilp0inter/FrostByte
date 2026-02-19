@@ -1,6 +1,16 @@
-module Page.Home.Types exposing (ComputedText, Model, Msg(..), OutMsg(..), initialModel, requestMeasurement)
+module Page.Home.Types exposing
+    ( ComputedText
+    , Model
+    , Msg(..)
+    , OutMsg(..)
+    , PropertyChange(..)
+    , initialModel
+    , requestAllMeasurements
+    )
 
+import Data.LabelObject as LO exposing (LabelObject(..), ObjectId)
 import Data.LabelTypes exposing (LabelTypeSpec, labelTypes, silverRatioHeight)
+import Dict exposing (Dict)
 import Ports
 
 
@@ -16,30 +26,46 @@ type alias Model =
     , labelHeight : Int
     , cornerRadius : Int
     , rotate : Bool
-    , variableName : String
-    , sampleValue : String
-    , fontFamily : String
-    , maxFontSize : Int
-    , minFontSize : Int
+    , content : List LabelObject
+    , selectedObjectId : Maybe ObjectId
+    , sampleValues : Dict String String
+    , computedTexts : Dict ObjectId ComputedText
+    , nextId : Int
     , padding : Int
-    , computedText : Maybe ComputedText
     }
 
 
 type Msg
     = LabelTypeChanged String
     | HeightChanged String
-    | VariableNameChanged String
-    | SampleValueChanged String
-    | MaxFontSizeChanged String
-    | MinFontSizeChanged String
     | PaddingChanged String
+    | SelectObject (Maybe ObjectId)
+    | AddObject LabelObject
+    | RemoveObject ObjectId
+    | UpdateObjectProperty ObjectId PropertyChange
+    | UpdateSampleValue String String
     | GotTextMeasureResult Ports.TextMeasureResult
+
+
+type PropertyChange
+    = SetTextContent String
+    | SetVariableName String
+    | SetFontSize String
+    | SetFontFamily String
+    | SetColorR String
+    | SetColorG String
+    | SetColorB String
+    | SetContainerX String
+    | SetContainerY String
+    | SetContainerWidth String
+    | SetContainerHeight String
+    | SetShapeType LO.ShapeType
+    | SetImageUrl String
 
 
 type OutMsg
     = NoOutMsg
-    | RequestTextMeasure Ports.TextMeasureRequest
+    | RequestTextMeasures (List Ports.TextMeasureRequest)
 
 
 initialModel : Model
@@ -50,39 +76,114 @@ initialModel =
 
         defaultHeight =
             silverRatioHeight defaultWidth
+
+        defaultVar =
+            VariableObj
+                { id = "obj-1"
+                , name = "nombre"
+                , properties = LO.defaultTextProperties
+                }
     in
     { labelTypeId = "62"
     , labelWidth = defaultWidth
     , labelHeight = defaultHeight
     , cornerRadius = 0
     , rotate = False
-    , variableName = "nombre"
-    , sampleValue = "Pollo con arroz"
-    , fontFamily = "Atkinson Hyperlegible"
-    , maxFontSize = 48
-    , minFontSize = 16
+    , content = [ defaultVar ]
+    , selectedObjectId = Nothing
+    , sampleValues = Dict.fromList [ ( "nombre", "Hello World!" ) ]
+    , computedTexts = Dict.empty
+    , nextId = 2
     , padding = 20
-    , computedText = Nothing
     }
 
 
-requestMeasurement : Model -> OutMsg
-requestMeasurement model =
+requestAllMeasurements : Model -> OutMsg
+requestAllMeasurements model =
     let
         displayWidth =
             if model.rotate then
                 model.labelHeight
+
             else
                 model.labelWidth
 
-        maxTextWidth =
-            displayWidth - (model.padding * 2)
+        displayHeight =
+            if model.rotate then
+                model.labelWidth
+
+            else
+                model.labelHeight
+
+        requests =
+            collectMeasurements model (toFloat displayWidth) (toFloat displayHeight) model.content
     in
-    RequestTextMeasure
-        { requestId = "label-text"
-        , text = model.sampleValue
-        , fontFamily = model.fontFamily
-        , maxFontSize = model.maxFontSize
-        , minFontSize = model.minFontSize
-        , maxWidth = maxTextWidth
-        }
+    if List.isEmpty requests then
+        NoOutMsg
+
+    else
+        RequestTextMeasures requests
+
+
+collectMeasurements : Model -> Float -> Float -> List LabelObject -> List Ports.TextMeasureRequest
+collectMeasurements model parentW parentH objects =
+    List.concatMap (collectForObject model parentW parentH) objects
+
+
+collectForObject : Model -> Float -> Float -> LabelObject -> List Ports.TextMeasureRequest
+collectForObject model parentW parentH obj =
+    case obj of
+        Container r ->
+            collectMeasurements model r.width r.height r.content
+
+        TextObj r ->
+            let
+                maxWidth =
+                    round (parentW - toFloat (model.padding * 2))
+
+                maxFontSize =
+                    round r.properties.fontSize
+
+                minFontSize =
+                    Basics.max 6 (maxFontSize // 3)
+            in
+            [ { requestId = r.id
+              , text = r.content
+              , fontFamily = r.properties.fontFamily
+              , maxFontSize = maxFontSize
+              , minFontSize = minFontSize
+              , maxWidth = maxWidth
+              , maxHeight = round (parentH - toFloat (model.padding * 2))
+              }
+            ]
+
+        VariableObj r ->
+            let
+                sampleText =
+                    Dict.get r.name model.sampleValues
+                        |> Maybe.withDefault ("{{" ++ r.name ++ "}}")
+
+                maxWidth =
+                    round (parentW - toFloat (model.padding * 2))
+
+                maxFontSize =
+                    round r.properties.fontSize
+
+                minFontSize =
+                    Basics.max 6 (maxFontSize // 3)
+            in
+            [ { requestId = r.id
+              , text = sampleText
+              , fontFamily = r.properties.fontFamily
+              , maxFontSize = maxFontSize
+              , minFontSize = minFontSize
+              , maxWidth = maxWidth
+              , maxHeight = round (parentH - toFloat (model.padding * 2))
+              }
+            ]
+
+        ImageObj _ ->
+            []
+
+        ShapeObj _ ->
+            []

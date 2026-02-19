@@ -8,6 +8,7 @@ type alias TextMeasureRequest =
     , maxFontSize : Int
     , minFontSize : Int
     , maxWidth : Int
+    , maxHeight : Int
     }
 
 

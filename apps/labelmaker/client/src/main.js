@@ -16,7 +16,8 @@ app.ports.requestTextMeasure.subscribe(({
   fontFamily,
   maxFontSize,
   minFontSize,
-  maxWidth
+  maxWidth,
+  maxHeight
 }) => {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
@@ -41,11 +42,19 @@ app.ports.requestTextMeasure.subscribe(({
     return lines
   }
 
+  // Helper to check if text fits vertically
+  const fitsVertically = (fontSize, lines) => {
+    if (maxHeight <= 0) return true
+    const lineHeight = fontSize * 1.2
+    const totalHeight = lineHeight * lines.length
+    return totalHeight <= maxHeight
+  }
+
   // Find fitted font size, then wrap if still needed
   let fittedSize = maxFontSize
   ctx.font = `bold ${fittedSize}px ${fontFamily}`
 
-  // Shrink font until it fits or reaches min size
+  // Shrink font until it fits width or reaches min size
   while (ctx.measureText(text).width > maxWidth && fittedSize > minFontSize) {
     fittedSize--
     ctx.font = `bold ${fittedSize}px ${fontFamily}`
@@ -55,6 +64,15 @@ app.ports.requestTextMeasure.subscribe(({
   let lines = [text]
   if (ctx.measureText(text).width > maxWidth) {
     lines = wrapText(text, `bold ${fittedSize}px ${fontFamily}`)
+  }
+
+  // If maxHeight is set, shrink further if lines exceed vertical space
+  if (maxHeight > 0 && !fitsVertically(fittedSize, lines)) {
+    while (fittedSize > minFontSize && !fitsVertically(fittedSize, lines)) {
+      fittedSize--
+      ctx.font = `bold ${fittedSize}px ${fontFamily}`
+      lines = wrapText(text, `bold ${fittedSize}px ${fontFamily}`)
+    }
   }
 
   app.ports.receiveTextMeasureResult.send({

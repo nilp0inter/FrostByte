@@ -199,12 +199,12 @@ handleHomeOutMsg outMsg model pageCmd =
         HomeTypes.NoOutMsg ->
             ( model, Cmd.map HomeMsg pageCmd )
 
-        HomeTypes.RequestTextMeasure request ->
+        HomeTypes.RequestTextMeasures requests ->
             ( model
             , Cmd.batch
-                [ Cmd.map HomeMsg pageCmd
-                , Ports.requestTextMeasure request
-                ]
+                (Cmd.map HomeMsg pageCmd
+                    :: List.map Ports.requestTextMeasure requests
+                )
             )
 
 
