@@ -172,6 +172,8 @@ services:
 
 volumes:
   postgres_data:
+    name: kitchen_postgres_data
+    external: true
   frostbyte_client_dist:
   frostbyte_client_node_modules:
   labelmaker_client_dist:

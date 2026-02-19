@@ -79,6 +79,11 @@
         enabled: true
         daemon_reload: true
 
+    - name: Create persistent database volume
+      ansible.builtin.command:
+        cmd: docker volume create kitchen_postgres_data
+      changed_when: false
+
     - name: Pull Docker images
       ansible.builtin.command:
         cmd: >

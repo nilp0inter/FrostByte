@@ -364,22 +364,44 @@ In addition to PostgreSQL dumps, GoBackup exports event tables from all apps as 
 - `common/backup/event-restore.sh` - CSV restore script (runs from dev machine or Pi)
 - `common/backup/Dockerfile` - Custom gobackup image with psql and scripts baked in
 
+### Backup Archive Structure
+
+GoBackup produces a `.tar.gz` archive (e.g., `kitchen_2026.02.19.21.46.38.tar.gz`) with a nested structure:
+
+```
+kitchen_<timestamp>.tar.gz
+└── kitchen_db/
+    ├── postgresql/
+    │   └── postgresql/
+    │       └── kitchen_db.sql        # Full PostgreSQL dump
+    └── archive.tar                   # Nested tar with CSV event exports
+        └── data/json/
+            ├── frostbyte_events.csv
+            └── labelmaker_events.csv
+```
+
+To extract the CSV files:
+```bash
+tar xzf kitchen_*.tar.gz
+tar xf kitchen_db/archive.tar
+# CSVs are now at data/json/frostbyte_events.csv and data/json/labelmaker_events.csv
+```
+
 ### Restoring from CSV Event Backup
 
 To restore data from a CSV event backup (e.g., after wiping the database):
 
 ```bash
-# 1. Download and extract the backup archive from B2
-# 2. Locate frostbyte_events.csv and/or labelmaker_events.csv in data/json/
+# Using Ansible (from dev machine, handles SCP + restore on Pi):
+task restore FROSTBYTE_CSV=/path/to/frostbyte_events.csv
+task restore FROSTBYTE_CSV=/path/to/frostbyte.csv LABELMAKER_CSV=/path/to/labelmaker.csv
 
-# 3. Restore FrostByte events
+# Manual (must run on same machine as containers):
 ./common/backup/event-restore.sh frostbyte /path/to/backup/data/json/frostbyte_events.csv
-
-# 4. Restore LabelMaker events
 ./common/backup/event-restore.sh labelmaker /path/to/backup/data/json/labelmaker_events.csv
 ```
 
-The restore script uses `docker exec` so it must run on the same machine as the containers. For remote restore, SCP the CSV to the Pi first, then run the script there.
+The manual restore script uses `docker exec` so it must run on the same machine as the containers. For remote restore, use `task restore` or SCP the CSV to the Pi first.
 
 ### Migrating from Old (Pre-Event-Sourcing) Backup
 
