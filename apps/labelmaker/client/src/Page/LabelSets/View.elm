@@ -81,7 +81,7 @@ viewBody model =
                 viewEmpty
 
             else
-                viewGrid labelsets
+                viewList labelsets
 
 
 viewEmpty : Html Msg
@@ -92,27 +92,30 @@ viewEmpty =
         ]
 
 
-viewGrid : List LabelSetSummary -> Html Msg
-viewGrid labelsets =
-    div [ class "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" ]
-        (List.map viewCard labelsets)
-
-
-viewCard : LabelSetSummary -> Html Msg
-viewCard labelset =
-    div [ class "bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow" ]
-        [ a
-            [ href ("/set/" ++ labelset.id)
-            , class "block p-4"
-            ]
-            [ div []
-                [ h3 [ class "font-semibold text-gray-800 mb-1" ] [ text labelset.name ]
-                , p [ class "text-sm text-gray-500 mb-1" ] [ text labelset.templateName ]
-                , p [ class "text-xs text-gray-400" ]
-                    [ text (String.fromInt labelset.rowCount ++ " filas") ]
+viewList : List LabelSetSummary -> Html Msg
+viewList labelsets =
+    table [ class "w-full bg-white rounded-lg border border-gray-200 text-left" ]
+        [ thead []
+            [ tr [ class "bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider" ]
+                [ th [ class "px-4 py-2 font-medium" ] [ text "Nombre" ]
+                , th [ class "px-4 py-2 font-medium" ] [ text "Plantilla" ]
+                , th [ class "px-4 py-2 font-medium" ] [ text "Filas" ]
+                , th [ class "px-4 py-2 font-medium w-0" ] []
                 ]
             ]
-        , div [ class "border-t border-gray-100 px-4 py-2 flex justify-end" ]
+        , tbody [ class "divide-y divide-gray-100" ]
+            (List.map viewRow labelsets)
+        ]
+
+
+viewRow : LabelSetSummary -> Html Msg
+viewRow labelset =
+    tr [ class "hover:bg-gray-50 transition-colors" ]
+        [ td [ class "px-4 py-3" ]
+            [ a [ href ("/set/" ++ labelset.id), class "font-semibold text-gray-800" ] [ text labelset.name ] ]
+        , td [ class "px-4 py-3 text-sm text-gray-400" ] [ text labelset.templateName ]
+        , td [ class "px-4 py-3 text-sm text-gray-400" ] [ text (String.fromInt labelset.rowCount ++ " filas") ]
+        , td [ class "px-4 py-3 text-right" ]
             [ button
                 [ class "text-sm text-red-400 hover:text-red-600 transition-colors"
                 , onClick (DeleteLabelSet labelset.id)

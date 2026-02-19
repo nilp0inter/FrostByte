@@ -82,7 +82,7 @@ viewBody model =
                 viewEmpty
 
             else
-                viewGrid labels
+                viewList labels
 
 
 viewEmpty : Html Msg
@@ -93,14 +93,24 @@ viewEmpty =
         ]
 
 
-viewGrid : List LabelSummary -> Html Msg
-viewGrid labels =
-    div [ class "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" ]
-        (List.map viewCard labels)
+viewList : List LabelSummary -> Html Msg
+viewList labels =
+    table [ class "w-full bg-white rounded-lg border border-gray-200 text-left" ]
+        [ thead []
+            [ tr [ class "bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider" ]
+                [ th [ class "px-4 py-2 font-medium" ] [ text "Nombre" ]
+                , th [ class "px-4 py-2 font-medium" ] [ text "Plantilla" ]
+                , th [ class "px-4 py-2 font-medium" ] [ text "Valores" ]
+                , th [ class "px-4 py-2 font-medium w-0" ] []
+                ]
+            ]
+        , tbody [ class "divide-y divide-gray-100" ]
+            (List.map viewRow labels)
+        ]
 
 
-viewCard : LabelSummary -> Html Msg
-viewCard label =
+viewRow : LabelSummary -> Html Msg
+viewRow label =
     let
         valuesSummary =
             Dict.toList label.values
@@ -108,23 +118,12 @@ viewCard label =
                 |> String.join ", "
                 |> truncateStr 60
     in
-    div [ class "bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow" ]
-        [ a
-            [ href ("/label/" ++ label.id)
-            , class "block p-4"
-            ]
-            [ div []
-                [ h3 [ class "font-semibold text-gray-800 mb-1" ] [ text label.name ]
-                , p [ class "text-sm text-gray-500 mb-1" ] [ text label.templateName ]
-                , if String.isEmpty valuesSummary then
-                    text ""
-
-                  else
-                    p [ class "text-sm text-gray-500 mb-1" ] [ text valuesSummary ]
-                , p [ class "text-xs text-gray-400" ] [ text ("Tipo: " ++ label.labelTypeId) ]
-                ]
-            ]
-        , div [ class "border-t border-gray-100 px-4 py-2 flex justify-end" ]
+    tr [ class "hover:bg-gray-50 transition-colors" ]
+        [ td [ class "px-4 py-3" ]
+            [ a [ href ("/label/" ++ label.id), class "font-semibold text-gray-800" ] [ text label.name ] ]
+        , td [ class "px-4 py-3 text-sm text-gray-400" ] [ text label.templateName ]
+        , td [ class "px-4 py-3 text-sm text-gray-400" ] [ text valuesSummary ]
+        , td [ class "px-4 py-3 text-right" ]
             [ button
                 [ class "text-sm text-red-400 hover:text-red-600 transition-colors"
                 , onClick (DeleteLabel label.id)

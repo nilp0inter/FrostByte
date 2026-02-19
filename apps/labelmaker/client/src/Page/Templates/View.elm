@@ -41,7 +41,7 @@ viewBody model =
                 viewEmpty
 
             else
-                viewGrid templates
+                viewList templates
 
 
 viewEmpty : Html Msg
@@ -56,27 +56,28 @@ viewEmpty =
         ]
 
 
-viewGrid : List TemplateSummary -> Html Msg
-viewGrid templates =
-    div [ class "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" ]
-        (List.map viewCard templates)
-
-
-viewCard : TemplateSummary -> Html Msg
-viewCard template =
-    div [ class "bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow" ]
-        [ a
-            [ href ("/template/" ++ template.id)
-            , class "block p-4"
-            ]
-            [ div [ class "flex items-start justify-between" ]
-                [ div []
-                    [ h3 [ class "font-semibold text-gray-800 mb-1" ] [ text template.name ]
-                    , p [ class "text-sm text-gray-500" ] [ text ("Tipo: " ++ template.labelTypeId) ]
-                    ]
+viewList : List TemplateSummary -> Html Msg
+viewList templates =
+    table [ class "w-full bg-white rounded-lg border border-gray-200 text-left" ]
+        [ thead []
+            [ tr [ class "bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider" ]
+                [ th [ class "px-4 py-2 font-medium" ] [ text "Nombre" ]
+                , th [ class "px-4 py-2 font-medium" ] [ text "Tipo" ]
+                , th [ class "px-4 py-2 font-medium w-0" ] []
                 ]
             ]
-        , div [ class "border-t border-gray-100 px-4 py-2 flex justify-end" ]
+        , tbody [ class "divide-y divide-gray-100" ]
+            (List.map viewRow templates)
+        ]
+
+
+viewRow : TemplateSummary -> Html Msg
+viewRow template =
+    tr [ class "hover:bg-gray-50 transition-colors" ]
+        [ td [ class "px-4 py-3" ]
+            [ a [ href ("/template/" ++ template.id), class "font-semibold text-gray-800" ] [ text template.name ] ]
+        , td [ class "px-4 py-3 text-sm text-gray-400" ] [ text template.labelTypeId ]
+        , td [ class "px-4 py-3 text-right" ]
             [ button
                 [ class "text-sm text-red-400 hover:text-red-600 transition-colors"
                 , onClick (DeleteTemplate template.id)
