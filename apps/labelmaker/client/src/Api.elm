@@ -1,11 +1,15 @@
 module Api exposing
     ( createLabel
+    , createLabelSet
     , createTemplate
     , deleteLabel
+    , deleteLabelSet
     , deleteTemplate
     , emitEvent
     , fetchLabelDetail
     , fetchLabelList
+    , fetchLabelSetDetail
+    , fetchLabelSetList
     , fetchTemplateList
     , fetchTemplateDetail
     , printLabelPng
@@ -96,6 +100,48 @@ deleteLabel : String -> (Result Http.Error () -> msg) -> Cmd msg
 deleteLabel labelId toMsg =
     emitEvent "label_deleted"
         (Encode.object [ ( "label_id", Encode.string labelId ) ])
+        toMsg
+
+
+fetchLabelSetList : (Result Http.Error (List Decoders.LabelSetSummary) -> msg) -> Cmd msg
+fetchLabelSetList toMsg =
+    Http.get
+        { url = "/api/db/labelset_list"
+        , expect = Http.expectJson toMsg (Decode.list Decoders.labelSetSummaryDecoder)
+        }
+
+
+fetchLabelSetDetail : String -> (Result Http.Error (Maybe Decoders.LabelSetDetail) -> msg) -> Cmd msg
+fetchLabelSetDetail labelsetId toMsg =
+    Http.get
+        { url = "/api/db/labelset_detail?id=eq." ++ labelsetId
+        , expect =
+            Http.expectJson toMsg
+                (Decode.list Decoders.labelSetDetailDecoder
+                    |> Decode.map List.head
+                )
+        }
+
+
+createLabelSet : String -> String -> (Result Http.Error String -> msg) -> Cmd msg
+createLabelSet templateId name toMsg =
+    Http.post
+        { url = "/api/db/rpc/create_labelset"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_template_id", Encode.string templateId )
+                    , ( "p_name", Encode.string name )
+                    ]
+                )
+        , expect = Http.expectJson toMsg Decoders.createLabelSetResponseDecoder
+        }
+
+
+deleteLabelSet : String -> (Result Http.Error () -> msg) -> Cmd msg
+deleteLabelSet labelsetId toMsg =
+    emitEvent "labelset_deleted"
+        (Encode.object [ ( "labelset_id", Encode.string labelsetId ) ])
         toMsg
 
 

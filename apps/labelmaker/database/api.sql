@@ -45,6 +45,24 @@ FROM labelmaker_logic.label l
 JOIN labelmaker_logic.template t ON t.id = l.template_id AND t.deleted = FALSE
 WHERE l.deleted = FALSE;
 
+-- LabelSet list (for list page — summary with template info, excludes deleted)
+CREATE VIEW labelmaker_api.labelset_list AS
+SELECT ls.id, ls.template_id, t.name AS template_name, t.label_type_id,
+       ls.name, jsonb_array_length(ls.rows) AS row_count, ls.created_at
+FROM labelmaker_logic.labelset ls
+JOIN labelmaker_logic.template t ON t.id = ls.template_id AND t.deleted = FALSE
+WHERE ls.deleted = FALSE
+ORDER BY ls.created_at DESC;
+
+-- LabelSet detail (for editor — full template data for rendering + rows)
+CREATE VIEW labelmaker_api.labelset_detail AS
+SELECT ls.id, ls.template_id, t.name AS template_name, t.label_type_id,
+       t.label_width, t.label_height, t.corner_radius, t.rotate, t.padding, t.content,
+       ls.name, ls.rows, ls.created_at
+FROM labelmaker_logic.labelset ls
+JOIN labelmaker_logic.template t ON t.id = ls.template_id AND t.deleted = FALSE
+WHERE ls.deleted = FALSE;
+
 -- =============================================================================
 -- RPC Functions
 -- =============================================================================
@@ -69,6 +87,32 @@ BEGIN
         'label_id', v_id,
         'template_id', p_template_id,
         'values', v_sample_values
+    ));
+    RETURN QUERY SELECT v_id;
+END;
+$$;
+
+-- Create labelset from template (copies sample_values as first row)
+CREATE FUNCTION labelmaker_api.create_labelset(p_template_id UUID, p_name TEXT)
+RETURNS TABLE(labelset_id UUID) LANGUAGE plpgsql AS $$
+DECLARE
+    v_id UUID := gen_random_uuid();
+    v_sample_values JSONB;
+BEGIN
+    SELECT sample_values INTO v_sample_values
+    FROM labelmaker_logic.template
+    WHERE id = p_template_id AND deleted = FALSE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Template not found: %', p_template_id;
+    END IF;
+
+    INSERT INTO labelmaker_data.event (type, payload)
+    VALUES ('labelset_created', jsonb_build_object(
+        'labelset_id', v_id,
+        'template_id', p_template_id,
+        'name', p_name,
+        'rows', jsonb_build_array(v_sample_values)
     ));
     RETURN QUERY SELECT v_id;
 END;

@@ -11,6 +11,10 @@ import Page.Label as Label
 import Page.Label.Types as LabelTypes
 import Page.Labels as Labels
 import Page.Labels.Types as LabelsTypes
+import Page.LabelSet as LabelSet
+import Page.LabelSet.Types as LabelSetTypes
+import Page.LabelSets as LabelSets
+import Page.LabelSets.Types as LabelSetsTypes
 import Page.NotFound as NotFound
 import Page.Templates as Templates
 import Page.Templates.Types as TemplatesTypes
@@ -58,6 +62,8 @@ type Page
     | TemplateEditorPage Home.Model
     | LabelListPage Labels.Model
     | LabelEditorPage Label.Model
+    | LabelSetListPage LabelSets.Model
+    | LabelSetEditorPage LabelSet.Model
     | NotFoundPage
 
 
@@ -91,6 +97,8 @@ type Msg
     | TemplatesMsg Templates.Msg
     | LabelsMsg Labels.Msg
     | LabelMsg Label.Msg
+    | LabelSetsMsg LabelSets.Msg
+    | LabelSetMsg LabelSet.Msg
     | GotTextMeasureResult Ports.TextMeasureResult
     | GotPngResult Ports.PngResult
     | DismissNotification Int
@@ -177,6 +185,36 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        LabelSetsMsg subMsg ->
+            case model.page of
+                LabelSetListPage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            LabelSets.update subMsg pageModel
+
+                        newModel =
+                            { model | page = LabelSetListPage newPageModel }
+                    in
+                    handleLabelSetsOutMsg outMsg newModel pageCmd
+
+                _ ->
+                    ( model, Cmd.none )
+
+        LabelSetMsg subMsg ->
+            case model.page of
+                LabelSetEditorPage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            LabelSet.update subMsg pageModel
+
+                        newModel =
+                            { model | page = LabelSetEditorPage newPageModel }
+                    in
+                    handleLabelSetOutMsg outMsg newModel pageCmd
+
+                _ ->
+                    ( model, Cmd.none )
+
         GotTextMeasureResult result ->
             case model.page of
                 TemplateEditorPage pageModel ->
@@ -199,6 +237,16 @@ update msg model =
                     in
                     handleLabelOutMsg outMsg newModel pageCmd
 
+                LabelSetEditorPage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            LabelSet.update (LabelSetTypes.GotTextMeasureResult result) pageModel
+
+                        newModel =
+                            { model | page = LabelSetEditorPage newPageModel }
+                    in
+                    handleLabelSetOutMsg outMsg newModel pageCmd
+
                 _ ->
                     ( model, Cmd.none )
 
@@ -213,6 +261,16 @@ update msg model =
                             { model | page = LabelEditorPage newPageModel }
                     in
                     handleLabelOutMsg outMsg newModel pageCmd
+
+                LabelSetEditorPage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            LabelSet.update (LabelSetTypes.GotPngResult result) pageModel
+
+                        newModel =
+                            { model | page = LabelSetEditorPage newPageModel }
+                    in
+                    handleLabelSetOutMsg outMsg newModel pageCmd
 
                 _ ->
                     ( model, Cmd.none )
@@ -272,6 +330,26 @@ initPage route model =
                     { model | page = LabelEditorPage pageModel }
             in
             handleLabelOutMsg outMsg newModel pageCmd
+
+        LabelSetList ->
+            let
+                ( pageModel, pageCmd ) =
+                    LabelSets.init
+
+                newModel =
+                    { model | page = LabelSetListPage pageModel }
+            in
+            ( newModel, Cmd.map LabelSetsMsg pageCmd )
+
+        LabelSetEditor uuid ->
+            let
+                ( pageModel, pageCmd, outMsg ) =
+                    LabelSet.init uuid
+
+                newModel =
+                    { model | page = LabelSetEditorPage pageModel }
+            in
+            handleLabelSetOutMsg outMsg newModel pageCmd
 
         NotFound ->
             ( { model | page = NotFoundPage }, Cmd.none )
@@ -386,6 +464,56 @@ handleLabelOutMsg outMsg model pageCmd =
             )
 
 
+handleLabelSetsOutMsg : LabelSets.OutMsg -> Model -> Cmd LabelSets.Msg -> ( Model, Cmd Msg )
+handleLabelSetsOutMsg outMsg model pageCmd =
+    case outMsg of
+        LabelSetsTypes.NoOutMsg ->
+            ( model, Cmd.map LabelSetsMsg pageCmd )
+
+        LabelSetsTypes.NavigateTo url ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map LabelSetsMsg pageCmd
+                , Nav.pushUrl model.key url
+                ]
+            )
+
+
+handleLabelSetOutMsg : LabelSet.OutMsg -> Model -> Cmd LabelSet.Msg -> ( Model, Cmd Msg )
+handleLabelSetOutMsg outMsg model pageCmd =
+    case outMsg of
+        LabelSetTypes.NoOutMsg ->
+            ( model, Cmd.map LabelSetMsg pageCmd )
+
+        LabelSetTypes.RequestTextMeasures requests ->
+            ( model
+            , Cmd.batch
+                (Cmd.map LabelSetMsg pageCmd
+                    :: List.map Ports.requestTextMeasure requests
+                )
+            )
+
+        LabelSetTypes.RequestSvgToPng request ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map LabelSetMsg pageCmd
+                , Ports.requestSvgToPng request
+                ]
+            )
+
+        LabelSetTypes.ShowNotification message notificationType ->
+            let
+                ( notifiedModel, notifyCmd ) =
+                    setNotification message notificationType model
+            in
+            ( notifiedModel
+            , Cmd.batch
+                [ Cmd.map LabelSetMsg pageCmd
+                , notifyCmd
+                ]
+            )
+
+
 
 -- SUBSCRIPTIONS
 
@@ -431,6 +559,12 @@ viewPage model =
 
         LabelEditorPage pageModel ->
             Html.map LabelMsg (Label.view pageModel)
+
+        LabelSetListPage pageModel ->
+            Html.map LabelSetsMsg (LabelSets.view pageModel)
+
+        LabelSetEditorPage pageModel ->
+            Html.map LabelSetMsg (LabelSet.view pageModel)
 
         NotFoundPage ->
             NotFound.view

@@ -6,6 +6,8 @@ Supports **multiple label templates** — a list page to create/select/delete te
 
 Also supports **labels** — instances of a template with concrete key-value pairs filled in. Labels can be previewed, edited, and printed via the Brother QL printer service.
 
+Also supports **labelsets** — named collections of rows (each row is a label's worth of variable values) based on a template. Enables batch label creation and printing from a spreadsheet-like interface.
+
 ## Three-Schema Architecture
 
 ```
@@ -27,10 +29,12 @@ labelmaker_api    — External interface: read views + RPC write functions (expo
 **Logic schema (idempotent — `labelmaker_logic`):**
 - **`labelmaker_logic.template`**: Projection table (id UUID, name, label_type_id, label_width, label_height, corner_radius, rotate, padding, content JSONB, next_id, sample_values JSONB, created_at, deleted)
 - **`labelmaker_logic.label`**: Projection table (id UUID, template_id UUID FK, values JSONB, created_at, deleted)
+- **`labelmaker_logic.labelset`**: Projection table (id UUID, template_id UUID FK, name TEXT, rows JSONB, created_at, deleted)
 - **8 template handler functions**: `apply_template_created`, `apply_template_deleted`, `apply_template_name_set`, `apply_template_label_type_set`, `apply_template_height_set`, `apply_template_padding_set`, `apply_template_content_set`, `apply_template_sample_value_set`
 - **3 label handler functions**: `apply_label_created`, `apply_label_deleted`, `apply_label_values_set`
-- **`labelmaker_logic.apply_event()`**: CASE dispatcher to 11 handler functions
-- **`labelmaker_logic.replay_all_events()`**: Truncates label and template tables and rebuilds from events
+- **4 labelset handler functions**: `apply_labelset_created`, `apply_labelset_deleted`, `apply_labelset_name_set`, `apply_labelset_rows_set`
+- **`labelmaker_logic.apply_event()`**: CASE dispatcher to 15 handler functions
+- **`labelmaker_logic.replay_all_events()`**: Truncates labelset, label, and template tables and rebuilds from events
 
 **API schema (idempotent — `labelmaker_api`):**
 - **`labelmaker_api.event`**: View exposing the event store (supports INSERT for writes)
@@ -40,8 +44,11 @@ labelmaker_api    — External interface: read views + RPC write functions (expo
 - **`labelmaker_api.label_detail`**: Full label+template data for rendering (includes template dimensions, content, padding, etc.)
 - **`labelmaker_api.create_template(p_name)`**: RPC function that generates UUID, inserts `template_created` event, returns `template_id`
 - **`labelmaker_api.create_label(p_template_id)`**: RPC function that generates UUID, copies template's sample_values as initial label values, inserts `label_created` event, returns `label_id`
+- **`labelmaker_api.labelset_list`**: LabelSet summary view (id, template_id, template_name, label_type_id, name, row_count, created_at; joins template, excludes deleted)
+- **`labelmaker_api.labelset_detail`**: Full labelset+template data for rendering (includes template dimensions, content, padding, rows)
+- **`labelmaker_api.create_labelset(p_template_id, p_name)`**: RPC function that generates UUID, copies template's sample_values as first row, inserts `labelset_created` event, returns `labelset_id`
 
-## Event Types (11)
+## Event Types (15)
 
 | Event | Payload |
 |---|---|
@@ -56,8 +63,12 @@ labelmaker_api    — External interface: read views + RPC write functions (expo
 | `label_created` | `{ label_id, template_id, values: {...} }` |
 | `label_deleted` | `{ label_id }` |
 | `label_values_set` | `{ label_id, values: {...} }` |
+| `labelset_created` | `{ labelset_id, template_id, name, rows: [{...}] }` |
+| `labelset_deleted` | `{ labelset_id }` |
+| `labelset_name_set` | `{ labelset_id, name }` |
+| `labelset_rows_set` | `{ labelset_id, rows: [{...}, ...] }` |
 
-Content events store the **full object tree** (not deltas). Server generates template and label UUIDs via `gen_random_uuid()` in the respective RPC functions.
+Content events store the **full object tree** (not deltas). Labelset row events store the **full rows array** (not deltas). Server generates template, label, and labelset UUIDs via `gen_random_uuid()` in the respective RPC functions.
 
 ## Database File Structure
 
@@ -88,12 +99,12 @@ SPA using `Browser.application` with multi-page routing and event-sourced persis
 ```
 apps/labelmaker/client/src/
 ├── Main.elm              # Entry point, routing, port subscriptions, OutMsg handling
-├── Route.elm             # Route type: TemplateList | TemplateEditor String | LabelList | LabelEditor String | NotFound
+├── Route.elm             # Route type: TemplateList | TemplateEditor | LabelList | LabelEditor | LabelSetList | LabelSetEditor | NotFound
 ├── Types.elm             # Shared types (RemoteData, Notification)
 ├── Ports.elm             # Port module: text measurement + SVG-to-PNG conversion
-├── Api.elm               # HTTP functions (templates, labels, printing)
+├── Api.elm               # HTTP functions (templates, labels, labelsets, printing)
 ├── Api/
-│   ├── Decoders.elm      # JSON decoders (TemplateSummary, TemplateDetail, LabelSummary, LabelDetail, etc.)
+│   ├── Decoders.elm      # JSON decoders (TemplateSummary, TemplateDetail, LabelSummary, LabelDetail, LabelSetSummary, LabelSetDetail, etc.)
 │   └── Encoders.elm      # JSON encoders (encodeEvent, encodeLabelObject, encodePrintRequest, etc.)
 ├── Components.elm        # Header, notification, loading
 ├── Data/
@@ -117,6 +128,14 @@ apps/labelmaker/client/src/
     ├── Label/
     │   ├── Types.elm     # Model (label data, values, printing state), Msg, OutMsg (print flow)
     │   └── View.elm      # Two-column: SVG preview (read-only) + value form + print button
+    ├── LabelSets.elm     # Facade: labelset list page (create from template, delete, navigate)
+    ├── LabelSets/
+    │   ├── Types.elm     # Model (labelsets + templates RemoteData, selectedTemplateId, newName), Msg, OutMsg
+    │   └── View.elm      # Template picker + name input + card grid of labelsets
+    ├── LabelSet.elm      # Facade: labelset editor page (spreadsheet, preview, batch print)
+    ├── LabelSet/
+    │   ├── Types.elm     # Model (labelset data, rows, selectedRowIndex, print queue), Msg, OutMsg
+    │   └── View.elm      # Two-column: SVG preview + spreadsheet table + print controls
     ├── NotFound.elm      # Facade
     └── NotFound/
         └── View.elm      # 404 page
@@ -129,6 +148,8 @@ apps/labelmaker/client/src/
 - `/template/<uuid>` — Template editor (label canvas with persistence)
 - `/labels` — Label list (create from template, view, delete labels)
 - `/label/<uuid>` — Label editor (edit values, preview, print)
+- `/sets` — LabelSet list (create from template, view, delete labelsets)
+- `/set/<uuid>` — LabelSet editor (spreadsheet, preview, single/batch print)
 
 **Styling:** Tailwind CSS with custom "label" color palette (warm brown tones)
 
@@ -285,6 +306,37 @@ Each variable in the template has a text input. On change:
 2. Emit `label_values_set` event (persists immediately)
 3. Trigger text remeasurement for updated preview
 
+## LabelSet Editor Page
+
+The labelset editor page (`/set/<uuid>`) displays a spreadsheet of rows where each row contains values for all template variables. Includes SVG preview of the selected row and single/batch printing.
+
+### Init Flow
+
+1. `LabelSet.init labelsetId` creates model with defaults, fires `fetchLabelSetDetail`
+2. `GotLabelSetDetail (Ok (Just detail))` applies template+labelset data, extracts `variableNames` from content tree, selects row 0, triggers text measurements
+3. Variable names are derived from the template's content tree via `allVariableNames`
+
+### Spreadsheet
+
+- Header: "#" + one column per variable name
+- Rows: clickable row number (selects row for preview) + `<input>` per cell
+- Selected row highlighted with `bg-label-50`
+- Delete button per row (hidden if only 1 row)
+- "Agregar fila" button below table adds a row with empty values
+- Cell edits emit `labelset_rows_set` with the full rows array (full-replacement pattern)
+
+### Print Flow (Single Row)
+
+Same as Label editor: `RequestPrint` → SVG-to-PNG → POST to printer
+
+### Batch Print Flow
+
+1. `RequestPrintAll` sets `printingAll=True`, `printProgress={current=1, total=N}`, selects row 0, clears computedTexts
+2. Text measurements complete → all text object IDs have entries in `computedTexts` → auto-trigger `RequestSvgToPng`
+3. `GotPngResult` → POST to printer
+4. `GotPrintResult Ok` → advance: if more rows in `printQueue`, select next, clear computedTexts, request measurements (loop to step 2). If done, show success notification.
+5. Detection: in `GotTextMeasureResult`, after inserting result, check if all text object IDs (from `allTextObjectIds`) have entries. If yes AND `printingAll`, trigger SVG-to-PNG.
+
 ## Working with Ports
 
 Ports are defined in `Ports.elm` and handled in `main.js`:
@@ -336,6 +388,9 @@ docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm install -g el
 | `/api/db/label_list` | GET | List all labels (summary with template info, excludes deleted) |
 | `/api/db/label_detail?id=eq.<uuid>` | GET | Full label+template data for rendering |
 | `/api/db/rpc/create_label` | POST | Create label from template (body: `{"p_template_id":"uuid"}`, returns `[{"label_id":"uuid"}]`) |
+| `/api/db/labelset_list` | GET | List all labelsets (summary with template info, excludes deleted) |
+| `/api/db/labelset_detail?id=eq.<uuid>` | GET | Full labelset+template data for rendering |
+| `/api/db/rpc/create_labelset` | POST | Create labelset from template (body: `{"p_template_id":"uuid","p_name":"..."}`, returns `[{"labelset_id":"uuid"}]`) |
 | `/api/db/event` | POST | Insert event (body: `{"type":"...","payload":{...}}`) |
 | `/api/db/event` | GET | Event store (for backup) |
 | `/api/printer/print` | POST | Print PNG label (body: `{"image_data":"base64...","label_type":"62"}`) |

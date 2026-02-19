@@ -13,6 +13,8 @@ type Route
     | TemplateEditor String
     | LabelList
     | LabelEditor String
+    | LabelSetList
+    | LabelSetEditor String
     | NotFound
 
 
@@ -28,4 +30,6 @@ routeParser =
         , Parser.map TemplateEditor (Parser.s "template" </> Parser.string)
         , Parser.map LabelList (Parser.s "labels")
         , Parser.map LabelEditor (Parser.s "label" </> Parser.string)
+        , Parser.map LabelSetList (Parser.s "sets")
+        , Parser.map LabelSetEditor (Parser.s "set" </> Parser.string)
         ]

@@ -189,7 +189,12 @@ Browser :80/:8080 → Caddy → printer_service:8000 (/api/printer/*)
 - http://localhost/labels - Label designer (preset management)
 
 *LabelMaker (:8080):*
-- http://localhost:8080/ - Home (welcome page)
+- http://localhost:8080/ - Template list (create, select, delete templates)
+- http://localhost:8080/template/{uuid} - Template editor (label canvas)
+- http://localhost:8080/labels - Label list (create from template, view, delete)
+- http://localhost:8080/label/{uuid} - Label editor (edit values, preview, print)
+- http://localhost:8080/sets - LabelSet list (create from template, batch labels)
+- http://localhost:8080/set/{uuid} - LabelSet editor (spreadsheet, preview, batch print)
 
 ### Service Architecture
 
