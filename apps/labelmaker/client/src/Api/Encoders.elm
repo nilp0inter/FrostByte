@@ -24,6 +24,7 @@ encodeLabelObject obj =
             Encode.object
                 [ ( "type", Encode.string "container" )
                 , ( "id", Encode.string r.id )
+                , ( "name", Encode.string r.name )
                 , ( "x", Encode.float r.x )
                 , ( "y", Encode.float r.y )
                 , ( "width", Encode.float r.width )

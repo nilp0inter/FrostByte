@@ -129,10 +129,10 @@ apps/labelmaker/client/src/
     ├── Templates/
     │   ├── Types.elm     # Model (RemoteData list), Msg, OutMsg (NavigateTo)
     │   └── View.elm      # Card grid with create/delete buttons
-    ├── Home.elm          # Facade: template editor page (init takes templateId, deferred persistence)
+    ├── Home.elm          # Facade: template editor page (init takes templateId, deferred persistence, subscriptions for drag)
     ├── Home/
-    │   ├── Types.elm     # Editor model (templateId, templateName, label settings, content tree), msgs, OutMsg
-    │   └── View.elm      # Two-column layout: SVG preview + editor controls, back link, name input
+    │   ├── Types.elm     # Editor model (templateId, templateName, label settings, content tree, dragState, treeDragState), msgs, OutMsg
+    │   └── View.elm      # Two-column layout: SVG preview (drag-to-move/resize) + editor controls (DnD tree), back link, name input
     ├── Labels.elm        # Facade: label list page (create from template, delete, navigate)
     ├── Labels/
     │   ├── Types.elm     # Model (labels + templates RemoteData, selectedTemplateId, newName), Msg, OutMsg
@@ -154,7 +154,7 @@ apps/labelmaker/client/src/
         └── View.elm      # 404 page
 ```
 
-**Architecture pattern:** Same as FrostByte — each page exposes Model, Msg, OutMsg, init, update, view. Pages communicate up via OutMsg.
+**Architecture pattern:** Same as FrostByte — each page exposes Model, Msg, OutMsg, init, update, view. The template editor (Home) also exposes `subscriptions` for mouse drag events. Pages communicate up via OutMsg.
 
 **Routes:**
 - `/` — Template list (create, select, delete templates)
@@ -186,7 +186,7 @@ getValue : Committable a -> a
 **Template editor (Home.elm):**
 - Wrapped fields: `templateName`, `labelHeight`, `padding`, `content`, `sampleValues`
 - Deferred: `TemplateNameChanged`, `HeightChanged`, `PaddingChanged`, `UpdateObjectProperty` (except `SetShapeType`), `UpdateSampleValue`
-- Immediate: `LabelTypeChanged`, `AddObject`, `RemoveObject`, `SetShapeType`
+- Immediate: `LabelTypeChanged`, `AddObject`, `RemoveObject`, `SetShapeType`, `MoveObjectToParent`, `TreeDrop`, `SvgMouseUp` (commits on release)
 
 **Label editor (Label.elm):**
 - Wrapped fields: `labelName : Committable String`, `values : Dict String (Committable String)`
@@ -211,7 +211,7 @@ Labels are built from a tree of composable objects defined in `Data/LabelObject.
 
 ```elm
 type LabelObject
-    = Container { id, x, y, width, height, content : List LabelObject }
+    = Container { id, name, x, y, width, height, content : List LabelObject }
     | TextObj { id, content, properties : TextProperties }
     | VariableObj { id, name, properties : TextProperties }
     | ImageObj { id, url }
@@ -230,11 +230,11 @@ type LabelObject
 - `TextProperties { fontSize, fontFamily, color }` — `fontSize` is the max for auto-fit (min derived as `max 6 (fontSize / 3)`)
 - `ShapeProperties { shapeType, color }` — `ShapeType` is `Rectangle | Circle | Line`
 
-**Tree operations:** `findObject`, `updateObjectInTree`, `removeObjectFromTree`, `addObjectTo`, `allTextObjectIds`
+**Tree operations:** `findObject`, `updateObjectInTree`, `removeObjectFromTree`, `addObjectTo`, `allTextObjectIds`, `removeAndReturn`, `insertAtTarget`, `isDescendantOf`, `allContainerIds`
 
 **Constructors:** `newText`, `newVariable`, `newContainer`, `newShape`, `newImage` — all take a `nextId : Int` parameter
 
-**JSON serialization:** Objects are serialized with a `"type"` discriminator field (`"container"`, `"text"`, `"variable"`, `"image"`, `"shape"`). Container's `content` uses `Decode.lazy` for recursive decoding.
+**JSON serialization:** Objects are serialized with a `"type"` discriminator field (`"container"`, `"text"`, `"variable"`, `"image"`, `"shape"`). Container's `content` uses `Decode.lazy` for recursive decoding. Container `name` is decoded with `Maybe` fallback to `""` for backward compatibility with existing data.
 
 ## Label Canvas Editor (Template Editor Page)
 
@@ -254,6 +254,8 @@ The editor page (`/template/<uuid>`) is a live label canvas editor with composab
 - `computedTexts : Dict ObjectId ComputedText` — Per-object auto-fit results (fittedFontSize + lines)
 - `nextId : Int` — Auto-incrementing ID counter for new objects
 - `padding : Committable Int` — Inner padding in pixels (default: 20)
+- `dragState : Maybe DragState` — SVG canvas drag state (move/resize containers via mouse)
+- `treeDragState : Maybe TreeDragState` — Object tree HTML5 drag-and-drop state (reorder/reparent)
 
 ### Text Fitting Flow
 
@@ -276,26 +278,31 @@ The editor page (`/template/<uuid>`) is a live label canvas editor with composab
 - Recursive rendering of object tree (`renderObject`)
 - Click objects on canvas to select them (dashed blue border overlay)
 - Click background to deselect
+- **Drag-to-move**: selected containers can be dragged on canvas (`cursor: move` on selection overlay)
+- **Drag-to-resize**: 4 corner handles (8x8 blue squares) on selected containers for resize via drag
+- Mouse deltas are divided by `scaleFactor` for screen-to-SVG coordinate conversion (no DOM queries)
+- Content is marked `Dirty` during drag, committed on mouse up; text remeasurement deferred to release for resize
 - Scaled to fit max 500px width
 - Dimension info below
 
 **Right column — Editor controls (scrollable):**
 1. **Label settings** (top): label type dropdown, dimensions, padding
-2. **Object tree** (middle): hierarchical list with type icons, click-to-select, delete buttons, indented container children
+2. **Object tree** (middle): hierarchical list with type icons, click-to-select, delete buttons, indented container children. Supports **HTML5 drag-and-drop** for reordering (drop indicators: blue line for before/after, highlight for drop-into container). Prevents dropping into own descendants.
 3. **Add toolbar**: buttons to add Text, Variable, Container, Rectangle, Circle, Line, Image (appends to root or inside selected container)
 4. **Property editor** (bottom): context-sensitive controls for selected object:
-   - Container: x, y, width, height
+   - Container: name, x, y, width, height
    - TextObj: content, font family, font size, RGB color
    - VariableObj: variable name, sample value, font family, font size, RGB color
    - ShapeObj: shape type dropdown, RGB color
    - ImageObj: URL input
+   - All types: "Mover a" dropdown to reparent into a container or root level
 
 ### Messages
 
 - `SelectObject (Maybe ObjectId)` — Select/deselect an object (ephemeral)
 - `AddObject LabelObject` — Add object to root or inside selected container → immediate `template_content_set`
 - `RemoveObject ObjectId` — Remove object from tree → immediate `template_content_set`
-- `UpdateObjectProperty ObjectId PropertyChange` — Apply a property change → deferred (except `SetShapeType` which is immediate)
+- `UpdateObjectProperty ObjectId PropertyChange` — Apply a property change → deferred (except `SetShapeType` which is immediate). Includes `SetContainerName`.
 - `UpdateSampleValue String String` — Set sample value for a variable (deferred)
 - `LabelTypeChanged` → immediate `template_label_type_set`
 - `HeightChanged` → deferred, updates model only
@@ -306,6 +313,14 @@ The editor page (`/template/<uuid>`) is a live label canvas editor with composab
 - `CommitPadding` — On blur: persists `template_padding_set` if dirty
 - `CommitContent` — On blur: persists `template_content_set` if dirty
 - `CommitSampleValue String` — On blur: persists `template_sample_value_set` if dirty
+- `SvgMouseDown ObjectId DragMode Float Float` — Start SVG drag (move or resize handle)
+- `SvgMouseMove Float Float` — Continue SVG drag (via `Browser.Events.onMouseMove` subscription)
+- `SvgMouseUp` — End SVG drag, commit content, remeasure text if resized
+- `TreeDragStart ObjectId` — Start HTML5 tree drag
+- `TreeDragOver DropTarget` — Update tree drop target (DropBefore/DropAfter/DropInto based on offset ratio)
+- `TreeDrop` — Execute tree reorder/reparent
+- `TreeDragEnd` — Clear tree drag state
+- `MoveObjectToParent ObjectId (Maybe ObjectId)` — Reparent object via "Mover a" dropdown (Nothing = root)
 - `GotTextMeasureResult` — Receive measurement result from JS (ephemeral)
 - `GotTemplateDetail` — Receive template state from API on init
 - `EventEmitted` — No-op acknowledgement of event POST

@@ -1,9 +1,14 @@
 module Page.Home.Types exposing
     ( ComputedText
+    , DragMode(..)
+    , DragState
+    , DropTarget(..)
+    , Handle(..)
     , Model
     , Msg(..)
     , OutMsg(..)
     , PropertyChange(..)
+    , TreeDragState
     , applyTemplateDetail
     , initialModel
     , requestAllMeasurements
@@ -24,6 +29,38 @@ type alias ComputedText =
     }
 
 
+type DragMode
+    = Moving
+    | ResizingHandle Handle
+
+
+type Handle
+    = TopLeft
+    | TopRight
+    | BottomLeft
+    | BottomRight
+
+
+type alias DragState =
+    { mode : DragMode
+    , targetId : ObjectId
+    , startMouse : { x : Float, y : Float }
+    , startRect : { x : Float, y : Float, width : Float, height : Float }
+    }
+
+
+type alias TreeDragState =
+    { draggedId : ObjectId
+    , dropTarget : Maybe DropTarget
+    }
+
+
+type DropTarget
+    = DropBefore ObjectId
+    | DropAfter ObjectId
+    | DropInto ObjectId
+
+
 type alias Model =
     { templateId : String
     , templateName : Committable String
@@ -38,6 +75,8 @@ type alias Model =
     , computedTexts : Dict ObjectId ComputedText
     , nextId : Int
     , padding : Committable Int
+    , dragState : Maybe DragState
+    , treeDragState : Maybe TreeDragState
     }
 
 
@@ -59,6 +98,14 @@ type Msg
     | CommitPadding
     | CommitContent
     | CommitSampleValue String
+    | SvgMouseDown ObjectId DragMode Float Float
+    | SvgMouseMove Float Float
+    | SvgMouseUp
+    | TreeDragStart ObjectId
+    | TreeDragOver DropTarget
+    | TreeDrop
+    | TreeDragEnd
+    | MoveObjectToParent ObjectId (Maybe ObjectId)
 
 
 type PropertyChange
@@ -73,6 +120,7 @@ type PropertyChange
     | SetContainerY String
     | SetContainerWidth String
     | SetContainerHeight String
+    | SetContainerName String
     | SetShapeType LO.ShapeType
     | SetImageUrl String
 
@@ -111,6 +159,8 @@ initialModel templateId =
     , computedTexts = Dict.empty
     , nextId = 2
     , padding = Clean 20
+    , dragState = Nothing
+    , treeDragState = Nothing
     }
 
 

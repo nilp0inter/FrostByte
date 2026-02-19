@@ -1,12 +1,14 @@
-module Page.Home exposing (Model, Msg, OutMsg, init, update, view)
+module Page.Home exposing (Model, Msg, OutMsg, init, subscriptions, update, view)
 
 import Api
 import Api.Encoders as Encoders
+import Browser.Events
 import Data.LabelObject as LO exposing (LabelObject(..), ObjectId)
 import Data.LabelTypes exposing (LabelTypeSpec, labelTypes, silverRatioHeight)
 import Dict
 import Html exposing (Html)
-import Page.Home.Types as Types exposing (PropertyChange(..))
+import Json.Decode as Decode
+import Page.Home.Types as Types exposing (DragMode(..), DropTarget(..), PropertyChange(..))
 import Types exposing (Committable(..), getValue)
 import Page.Home.View as View
 import Ports
@@ -30,6 +32,94 @@ init templateId =
     , Api.fetchTemplateDetail templateId Types.GotTemplateDetail
     , Types.NoOutMsg
     )
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    case model.dragState of
+        Nothing ->
+            Sub.none
+
+        Just _ ->
+            Sub.batch
+                [ Browser.Events.onMouseMove
+                    (Decode.map2 Types.SvgMouseMove
+                        (Decode.field "clientX" Decode.float)
+                        (Decode.field "clientY" Decode.float)
+                    )
+                , Browser.Events.onMouseUp (Decode.succeed Types.SvgMouseUp)
+                ]
+
+
+computeScaleFactor : Model -> Float
+computeScaleFactor model =
+    let
+        labelH =
+            getValue model.labelHeight
+
+        displayWidth =
+            if model.rotate then
+                labelH
+
+            else
+                model.labelWidth
+
+        displayHeight =
+            if model.rotate then
+                model.labelWidth
+
+            else
+                labelH
+    in
+    Basics.min 1.0 (500.0 / toFloat displayWidth)
+
+
+applyDrag : Types.DragState -> Float -> Float -> { x : Float, y : Float, width : Float, height : Float }
+applyDrag drag mouseX mouseY =
+    let
+        dx =
+            mouseX - drag.startMouse.x
+
+        dy =
+            mouseY - drag.startMouse.y
+
+        sr =
+            drag.startRect
+
+        clampMin v =
+            Basics.max 10 v
+    in
+    case drag.mode of
+        Moving ->
+            { x = sr.x + dx, y = sr.y + dy, width = sr.width, height = sr.height }
+
+        ResizingHandle Types.TopLeft ->
+            { x = sr.x + dx
+            , y = sr.y + dy
+            , width = clampMin (sr.width - dx)
+            , height = clampMin (sr.height - dy)
+            }
+
+        ResizingHandle Types.TopRight ->
+            { x = sr.x
+            , y = sr.y + dy
+            , width = clampMin (sr.width + dx)
+            , height = clampMin (sr.height - dy)
+            }
+
+        ResizingHandle Types.BottomLeft ->
+            { x = sr.x + dx
+            , y = sr.y
+            , width = clampMin (sr.width - dx)
+            , height = clampMin (sr.height + dy)
+            }
+
+        ResizingHandle Types.BottomRight ->
+            { x = sr.x
+            , y = sr.y
+            , width = clampMin (sr.width + dx)
+            , height = clampMin (sr.height + dy)
+            }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg, OutMsg )
@@ -186,6 +276,9 @@ update msg model =
                         SetFontFamily _ ->
                             True
 
+                        SetContainerName _ ->
+                            False
+
                         SetContainerX _ ->
                             False
 
@@ -323,6 +416,221 @@ update msg model =
                 _ ->
                     ( model, Cmd.none, Types.NoOutMsg )
 
+        Types.SvgMouseDown targetId mode mouseX mouseY ->
+            case LO.findObject targetId (getValue model.content) of
+                Just (Container r) ->
+                    let
+                        sf =
+                            computeScaleFactor model
+
+                        drag =
+                            { mode = mode
+                            , targetId = targetId
+                            , startMouse = { x = mouseX, y = mouseY }
+                            , startRect = { x = r.x, y = r.y, width = r.width, height = r.height }
+                            }
+                    in
+                    ( { model | dragState = Just drag, selectedObjectId = Just targetId }
+                    , Cmd.none
+                    , Types.NoOutMsg
+                    )
+
+                _ ->
+                    ( model, Cmd.none, Types.NoOutMsg )
+
+        Types.SvgMouseMove mouseX mouseY ->
+            case model.dragState of
+                Nothing ->
+                    ( model, Cmd.none, Types.NoOutMsg )
+
+                Just drag ->
+                    let
+                        sf =
+                            computeScaleFactor model
+
+                        svgDx =
+                            (mouseX - drag.startMouse.x) / sf
+
+                        svgDy =
+                            (mouseY - drag.startMouse.y) / sf
+
+                        newDrag =
+                            { drag | startMouse = drag.startMouse }
+
+                        svgRect =
+                            applyDrag { drag | startMouse = { x = 0, y = 0 } } svgDx svgDy
+
+                        -- For applyDrag, we pass scaled deltas as the mouse coords
+                        -- since startMouse is 0,0, the dx/dy become our svg deltas
+                        newContent =
+                            LO.updateObjectInTree drag.targetId
+                                (\obj ->
+                                    case obj of
+                                        Container r ->
+                                            Container
+                                                { r
+                                                    | x = svgRect.x
+                                                    , y = svgRect.y
+                                                    , width = svgRect.width
+                                                    , height = svgRect.height
+                                                }
+
+                                        _ ->
+                                            obj
+                                )
+                                (getValue model.content)
+                    in
+                    ( { model | content = Dirty newContent }
+                    , Cmd.none
+                    , Types.NoOutMsg
+                    )
+
+        Types.SvgMouseUp ->
+            case model.dragState of
+                Nothing ->
+                    ( model, Cmd.none, Types.NoOutMsg )
+
+                Just drag ->
+                    let
+                        needsRemeasure =
+                            case drag.mode of
+                                Moving ->
+                                    False
+
+                                ResizingHandle _ ->
+                                    True
+
+                        newModel =
+                            { model
+                                | dragState = Nothing
+                                , computedTexts =
+                                    if needsRemeasure then
+                                        Dict.empty
+
+                                    else
+                                        model.computedTexts
+                            }
+                    in
+                    case newModel.content of
+                        Dirty content ->
+                            let
+                                committedModel =
+                                    { newModel | content = Clean content }
+                            in
+                            if needsRemeasure then
+                                ( committedModel, Cmd.none, Types.requestAllMeasurements committedModel )
+                                    |> withContentCmd committedModel
+
+                            else
+                                ( committedModel, Cmd.none, Types.NoOutMsg )
+                                    |> withContentCmd committedModel
+
+                        Clean _ ->
+                            ( newModel, Cmd.none, Types.NoOutMsg )
+
+        Types.TreeDragStart draggedId ->
+            ( { model | treeDragState = Just { draggedId = draggedId, dropTarget = Nothing } }
+            , Cmd.none
+            , Types.NoOutMsg
+            )
+
+        Types.TreeDragOver dropTarget ->
+            case model.treeDragState of
+                Nothing ->
+                    ( model, Cmd.none, Types.NoOutMsg )
+
+                Just tds ->
+                    ( { model | treeDragState = Just { tds | dropTarget = Just dropTarget } }
+                    , Cmd.none
+                    , Types.NoOutMsg
+                    )
+
+        Types.TreeDrop ->
+            case model.treeDragState of
+                Nothing ->
+                    ( model, Cmd.none, Types.NoOutMsg )
+
+                Just tds ->
+                    case tds.dropTarget of
+                        Nothing ->
+                            ( { model | treeDragState = Nothing }, Cmd.none, Types.NoOutMsg )
+
+                        Just target ->
+                            let
+                                currentContent =
+                                    getValue model.content
+
+                                targetId =
+                                    case target of
+                                        DropBefore tid ->
+                                            tid
+
+                                        DropAfter tid ->
+                                            tid
+
+                                        DropInto tid ->
+                                            tid
+
+                                -- Prevent dropping into own descendants
+                                isSelfOrDescendant =
+                                    (tds.draggedId == targetId)
+                                        || LO.isDescendantOf targetId tds.draggedId currentContent
+
+                                ( maybeObj, withoutObj ) =
+                                    LO.removeAndReturn tds.draggedId currentContent
+                            in
+                            case ( maybeObj, isSelfOrDescendant ) of
+                                ( Just obj, False ) ->
+                                    let
+                                        newContent =
+                                            case target of
+                                                DropBefore tid ->
+                                                    LO.insertAtTarget tid True obj withoutObj
+
+                                                DropAfter tid ->
+                                                    LO.insertAtTarget tid False obj withoutObj
+
+                                                DropInto tid ->
+                                                    LO.addObjectTo (Just tid) obj withoutObj
+
+                                        newModel =
+                                            { model
+                                                | content = Clean newContent
+                                                , treeDragState = Nothing
+                                            }
+                                    in
+                                    ( newModel, Cmd.none, Types.NoOutMsg )
+                                        |> withContentCmd newModel
+
+                                _ ->
+                                    ( { model | treeDragState = Nothing }, Cmd.none, Types.NoOutMsg )
+
+        Types.TreeDragEnd ->
+            ( { model | treeDragState = Nothing }, Cmd.none, Types.NoOutMsg )
+
+        Types.MoveObjectToParent objId maybeParentId ->
+            let
+                currentContent =
+                    getValue model.content
+
+                ( maybeObj, withoutObj ) =
+                    LO.removeAndReturn objId currentContent
+            in
+            case maybeObj of
+                Just obj ->
+                    let
+                        newContent =
+                            LO.addObjectTo maybeParentId obj withoutObj
+
+                        newModel =
+                            { model | content = Clean newContent }
+                    in
+                    ( newModel, Cmd.none, Types.NoOutMsg )
+                        |> withContentCmd newModel
+
+                Nothing ->
+                    ( model, Cmd.none, Types.NoOutMsg )
+
         Types.EventEmitted _ ->
             ( model, Cmd.none, Types.NoOutMsg )
 
@@ -448,6 +756,9 @@ applyPropertyChange change obj =
 
                 Nothing ->
                     obj
+
+        ( SetContainerName val, Container r ) ->
+            Container { r | name = val }
 
         ( SetContainerX val, Container r ) ->
             case String.toFloat val of

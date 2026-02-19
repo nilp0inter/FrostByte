@@ -6,17 +6,21 @@ module Data.LabelObject exposing
     , ShapeType(..)
     , TextProperties
     , addObjectTo
+    , allContainerIds
     , allTextObjectIds
     , allVariableNames
     , defaultColor
     , defaultTextProperties
     , findObject
+    , insertAtTarget
+    , isDescendantOf
     , newContainer
     , newImage
     , newShape
     , newText
     , newVariable
     , objectId
+    , removeAndReturn
     , removeObjectFromTree
     , updateObjectInTree
     )
@@ -53,7 +57,7 @@ type alias ShapeProperties =
 
 
 type LabelObject
-    = Container { id : ObjectId, x : Float, y : Float, width : Float, height : Float, content : List LabelObject }
+    = Container { id : ObjectId, name : String, x : Float, y : Float, width : Float, height : Float, content : List LabelObject }
     | TextObj { id : ObjectId, content : String, properties : TextProperties }
     | VariableObj { id : ObjectId, name : String, properties : TextProperties }
     | ImageObj { id : ObjectId, url : String }
@@ -126,6 +130,7 @@ newContainer : Int -> Float -> Float -> Float -> Float -> LabelObject
 newContainer nextId x y w h =
     Container
         { id = "obj-" ++ String.fromInt nextId
+        , name = ""
         , x = x
         , y = y
         , width = w
@@ -281,6 +286,121 @@ allTextObjectIds objects =
 
                 Container r ->
                     allTextObjectIds r.content
+
+                _ ->
+                    []
+        )
+        objects
+
+
+removeAndReturn : ObjectId -> List LabelObject -> ( Maybe LabelObject, List LabelObject )
+removeAndReturn targetId objects =
+    let
+        go objs =
+            case objs of
+                [] ->
+                    ( Nothing, [] )
+
+                obj :: rest ->
+                    if objectId obj == targetId then
+                        ( Just obj, rest )
+
+                    else
+                        case obj of
+                            Container r ->
+                                let
+                                    ( found, newContent ) =
+                                        go r.content
+                                in
+                                case found of
+                                    Just _ ->
+                                        let
+                                            ( _, restResult ) =
+                                                go rest
+                                        in
+                                        ( found, Container { r | content = newContent } :: rest )
+
+                                    Nothing ->
+                                        let
+                                            ( foundInRest, restResult ) =
+                                                go rest
+                                        in
+                                        ( foundInRest, obj :: restResult )
+
+                            _ ->
+                                let
+                                    ( found, restResult ) =
+                                        go rest
+                                in
+                                ( found, obj :: restResult )
+    in
+    go objects
+
+
+insertAtTarget : ObjectId -> Bool -> LabelObject -> List LabelObject -> List LabelObject
+insertAtTarget targetId isBefore newObj objects =
+    List.concatMap
+        (\obj ->
+            if objectId obj == targetId then
+                if isBefore then
+                    [ newObj, obj ]
+
+                else
+                    [ obj, newObj ]
+
+            else
+                case obj of
+                    Container r ->
+                        [ Container { r | content = insertAtTarget targetId isBefore newObj r.content } ]
+
+                    _ ->
+                        [ obj ]
+        )
+        objects
+
+
+isDescendantOf : ObjectId -> ObjectId -> List LabelObject -> Bool
+isDescendantOf childId parentId objects =
+    case findObject parentId objects of
+        Just (Container r) ->
+            containsId childId r.content
+
+        _ ->
+            False
+
+
+containsId : ObjectId -> List LabelObject -> Bool
+containsId targetId objects =
+    List.any
+        (\obj ->
+            if objectId obj == targetId then
+                True
+
+            else
+                case obj of
+                    Container r ->
+                        containsId targetId r.content
+
+                    _ ->
+                        False
+        )
+        objects
+
+
+allContainerIds : List LabelObject -> List ( ObjectId, String )
+allContainerIds objects =
+    List.concatMap
+        (\obj ->
+            case obj of
+                Container r ->
+                    ( r.id
+                    , if String.isEmpty r.name then
+                        "Contenedor"
+
+                      else
+                        r.name
+                    )
+                        :: allContainerIds r.content
 
                 _ ->
                     []

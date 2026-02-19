@@ -6,7 +6,8 @@ import Dict
 import Html exposing (..)
 import Html.Attributes exposing (class, classList, for, href, id, max, min, placeholder, selected, step, style, type_, value)
 import Html.Events exposing (onBlur, onClick, onInput)
-import Page.Home.Types exposing (ComputedText, Model, Msg(..), PropertyChange(..))
+import Json.Decode as Decode
+import Page.Home.Types exposing (ComputedText, DragMode(..), DropTarget(..), Handle(..), Model, Msg(..), PropertyChange(..))
 import Types exposing (getValue)
 import Svg exposing (svg)
 import Svg.Attributes as SA
@@ -142,13 +143,16 @@ renderObject model parentW parentH obj =
                                 , SA.y "0"
                                 , SA.width (String.fromFloat r.width)
                                 , SA.height (String.fromFloat r.height)
-                                , SA.fill "none"
+                                , SA.fill "rgba(59,130,246,0.05)"
                                 , SA.stroke "#3b82f6"
                                 , SA.strokeWidth "2"
                                 , SA.strokeDasharray "6,3"
+                                , SA.cursor "move"
+                                , onSvgMouseDown r.id Moving
                                 ]
                                 []
                             ]
+                                ++ resizeHandles r.id r.width r.height
 
                         else
                             []
@@ -453,8 +457,12 @@ viewTreeItem model depth obj =
 
         label_ =
             case obj of
-                Container _ ->
-                    "Contenedor"
+                Container r_ ->
+                    if String.isEmpty r_.name then
+                        "Contenedor"
+
+                    else
+                        r_.name
 
                 TextObj r ->
                     truncateStr 20 r.content
@@ -475,13 +483,63 @@ viewTreeItem model depth obj =
 
                 _ ->
                     []
+        isDragged =
+            case model.treeDragState of
+                Just tds ->
+                    tds.draggedId == objIdVal
+
+                Nothing ->
+                    False
+
+        dropTargetHere =
+            case model.treeDragState of
+                Just tds ->
+                    tds.dropTarget
+
+                Nothing ->
+                    Nothing
+
+        isDropBefore =
+            dropTargetHere == Just (DropBefore objIdVal)
+
+        isDropAfter =
+            dropTargetHere == Just (DropAfter objIdVal)
+
+        isDropInto =
+            dropTargetHere == Just (DropInto objIdVal)
+
+        isContainer =
+            case obj of
+                Container _ ->
+                    True
+
+                _ ->
+                    False
     in
     div []
-        [ div
+        [ if isDropBefore then
+            div
+                [ class "h-0.5 bg-blue-500 rounded mx-2"
+                , style "margin-left" (String.fromInt (depth * 16 + 8) ++ "px")
+                ]
+                []
+
+          else
+            text ""
+        , div
             [ class "flex items-center gap-1 px-2 py-1 rounded cursor-pointer text-sm hover:bg-gray-100"
-            , classList [ ( "bg-blue-50 ring-1 ring-blue-300", isSelected ) ]
+            , classList
+                [ ( "bg-blue-50 ring-1 ring-blue-300", isSelected )
+                , ( "opacity-50", isDragged )
+                , ( "ring-2 ring-blue-400 bg-blue-50", isDropInto )
+                ]
             , style "padding-left" (String.fromInt (depth * 16 + 8) ++ "px")
             , onClick (SelectObject (Just objIdVal))
+            , Html.Attributes.draggable "true"
+            , onDragStart (TreeDragStart objIdVal)
+            , onDragOver model objIdVal isContainer
+            , onDrop TreeDrop
+            , onDragEnd TreeDragEnd
             ]
             [ span [ class "w-5 text-center flex-shrink-0" ] [ text icon ]
             , span [ class "flex-1 truncate" ] [ text label_ ]
@@ -491,6 +549,15 @@ viewTreeItem model depth obj =
                 ]
                 [ text "\u{00D7}" ]
             ]
+        , if isDropAfter then
+            div
+                [ class "h-0.5 bg-blue-500 rounded mx-2"
+                , style "margin-left" (String.fromInt (depth * 16 + 8) ++ "px")
+                ]
+                []
+
+          else
+            text ""
         , div [] (List.map (viewTreeItem model (depth + 1)) children)
         ]
 
@@ -568,7 +635,87 @@ viewPropertyEditor model =
                     div [ class "bg-white rounded-lg p-4 shadow-sm space-y-3" ]
                         [ h3 [ class "text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2" ] [ text "Propiedades" ]
                         , viewPropertiesFor model selId obj
+                        , viewMoveToDropdown model selId obj
                         ]
+
+
+viewMoveToDropdown : Model -> ObjectId -> LabelObject -> Html Msg
+viewMoveToDropdown model objId obj =
+    let
+        allContainers =
+            LO.allContainerIds (getValue model.content)
+
+        -- Filter out self and descendants
+        validTargets =
+            List.filter
+                (\( cId, _ ) ->
+                    cId
+                        /= objId
+                        && not (LO.isDescendantOf cId objId (getValue model.content))
+                )
+                allContainers
+
+        -- Find current parent
+        currentParent =
+            findParentId objId (getValue model.content)
+
+        currentValue =
+            case currentParent of
+                Nothing ->
+                    "__root__"
+
+                Just pid ->
+                    pid
+    in
+    propField "Mover a"
+        (select
+            [ class "w-full border border-gray-300 rounded px-2 py-1 text-sm"
+            , onInput
+                (\v ->
+                    if v == "__root__" then
+                        MoveObjectToParent objId Nothing
+
+                    else
+                        MoveObjectToParent objId (Just v)
+                )
+            ]
+            (option [ value "__root__", selected (currentParent == Nothing) ] [ text "Ra\u{00ED}z" ]
+                :: List.map
+                    (\( cId, cName ) ->
+                        option [ value cId, selected (currentParent == Just cId) ] [ text cName ]
+                    )
+                    validTargets
+            )
+        )
+
+
+findParentId : ObjectId -> List LabelObject -> Maybe ObjectId
+findParentId targetId objects =
+    findParentIdHelper Nothing targetId objects
+
+
+findParentIdHelper : Maybe ObjectId -> ObjectId -> List LabelObject -> Maybe ObjectId
+findParentIdHelper parentId targetId objects =
+    case objects of
+        [] ->
+            Nothing
+
+        obj :: rest ->
+            if LO.objectId obj == targetId then
+                parentId
+
+            else
+                case obj of
+                    Container r ->
+                        case findParentIdHelper (Just r.id) targetId r.content of
+                            Just found ->
+                                Just found
+
+                            Nothing ->
+                                findParentIdHelper parentId targetId rest
+
+                    _ ->
+                        findParentIdHelper parentId targetId rest
 
 
 viewPropertiesFor : Model -> ObjectId -> LabelObject -> Html Msg
@@ -576,7 +723,9 @@ viewPropertiesFor model objId obj =
     case obj of
         Container r ->
             div [ class "space-y-2" ]
-                [ propRow "X"
+                [ propField "Nombre"
+                    (propTextInput r.name (\v -> UpdateObjectProperty objId (SetContainerName v)) CommitContent)
+                , propRow "X"
                     (propNumberInput (String.fromFloat r.x) (\v -> UpdateObjectProperty objId (SetContainerX v)) CommitContent)
                     "Y"
                     (propNumberInput (String.fromFloat r.y) (\v -> UpdateObjectProperty objId (SetContainerY v)) CommitContent)
@@ -727,3 +876,95 @@ parseShapeType s =
 
         _ ->
             Rectangle
+
+
+resizeHandles : ObjectId -> Float -> Float -> List (Svg.Svg Msg)
+resizeHandles objId w h =
+    let
+        hs =
+            8
+
+        half =
+            hs / 2
+
+        handle cx cy cursor handleType =
+            Svg.rect
+                [ SA.x (String.fromFloat (cx - half))
+                , SA.y (String.fromFloat (cy - half))
+                , SA.width (String.fromFloat hs)
+                , SA.height (String.fromFloat hs)
+                , SA.fill "#3b82f6"
+                , SA.stroke "white"
+                , SA.strokeWidth "1"
+                , SA.cursor cursor
+                , onSvgMouseDown objId (ResizingHandle handleType)
+                ]
+                []
+    in
+    [ handle 0 0 "nwse-resize" TopLeft
+    , handle w 0 "nesw-resize" TopRight
+    , handle 0 h "nesw-resize" BottomLeft
+    , handle w h "nwse-resize" BottomRight
+    ]
+
+
+onSvgMouseDown : ObjectId -> DragMode -> Svg.Attribute Msg
+onSvgMouseDown objId mode =
+    Html.Events.custom "mousedown"
+        (Decode.map2
+            (\cx cy ->
+                { message = SvgMouseDown objId mode cx cy
+                , stopPropagation = True
+                , preventDefault = True
+                }
+            )
+            (Decode.field "clientX" Decode.float)
+            (Decode.field "clientY" Decode.float)
+        )
+
+
+onDragStart : Msg -> Html.Attribute Msg
+onDragStart msg =
+    Html.Events.on "dragstart" (Decode.succeed msg)
+
+
+onDragOver : Model -> ObjectId -> Bool -> Html.Attribute Msg
+onDragOver model objId isContainer =
+    Html.Events.preventDefaultOn "dragover"
+        (Decode.map2
+            (\offsetY targetHeight ->
+                let
+                    ratio =
+                        offsetY / targetHeight
+
+                    target =
+                        if ratio < 0.25 then
+                            DropBefore objId
+
+                        else if ratio > 0.75 then
+                            DropAfter objId
+
+                        else if isContainer then
+                            DropInto objId
+
+                        else if ratio < 0.5 then
+                            DropBefore objId
+
+                        else
+                            DropAfter objId
+                in
+                ( TreeDragOver target, True )
+            )
+            (Decode.field "offsetY" Decode.float)
+            (Decode.at [ "currentTarget", "offsetHeight" ] Decode.float)
+        )
+
+
+onDrop : Msg -> Html.Attribute Msg
+onDrop msg =
+    Html.Events.preventDefaultOn "drop" (Decode.succeed ( msg, True ))
+
+
+onDragEnd : Msg -> Html.Attribute Msg
+onDragEnd msg =
+    Html.Events.on "dragend" (Decode.succeed msg)

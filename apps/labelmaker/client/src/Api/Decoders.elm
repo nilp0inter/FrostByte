@@ -89,16 +89,21 @@ labelObjectByType : String -> Decoder LabelObject
 labelObjectByType typeStr =
     case typeStr of
         "container" ->
-            Decode.map6
-                (\id x y w h content ->
-                    Container { id = id, x = x, y = y, width = w, height = h, content = content }
+            Decode.succeed
+                (\id name x y w h content ->
+                    Container { id = id, name = name, x = x, y = y, width = w, height = h, content = content }
                 )
-                (Decode.field "id" Decode.string)
-                (Decode.field "x" Decode.float)
-                (Decode.field "y" Decode.float)
-                (Decode.field "width" Decode.float)
-                (Decode.field "height" Decode.float)
-                (Decode.field "content" (Decode.lazy (\_ -> Decode.list labelObjectDecoder)))
+                |> andMap (Decode.field "id" Decode.string)
+                |> andMap
+                    (Decode.field "name" Decode.string
+                        |> Decode.maybe
+                        |> Decode.map (Maybe.withDefault "")
+                    )
+                |> andMap (Decode.field "x" Decode.float)
+                |> andMap (Decode.field "y" Decode.float)
+                |> andMap (Decode.field "width" Decode.float)
+                |> andMap (Decode.field "height" Decode.float)
+                |> andMap (Decode.field "content" (Decode.lazy (\_ -> Decode.list labelObjectDecoder)))
 
         "text" ->
             Decode.map3

@@ -519,10 +519,16 @@ handleLabelSetOutMsg outMsg model pageCmd =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
+subscriptions model =
     Sub.batch
         [ Ports.receiveTextMeasureResult GotTextMeasureResult
         , Ports.receivePngResult GotPngResult
+        , case model.page of
+            TemplateEditorPage pageModel ->
+                Sub.map HomeMsg (Home.subscriptions pageModel)
+
+            _ ->
+                Sub.none
         ]
 
 
