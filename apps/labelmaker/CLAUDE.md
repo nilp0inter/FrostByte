@@ -1,6 +1,8 @@
 # LabelMaker App — CLAUDE.md
 
-LabelMaker is a **label template designer & library** using **CQRS + Event Sourcing**. All writes go through an append-only event table; projection tables are rebuilt from events.
+LabelMaker is a **general-purpose label canvas editor** using **CQRS + Event Sourcing**. All writes go through an append-only event table; projection tables are rebuilt from events.
+
+Currently v1: a live SVG canvas editor with auto-sizing text. No persistence or printing yet.
 
 ## Three-Schema Architecture
 
@@ -51,36 +53,120 @@ Schema changes are **auto-applied on every `docker compose up`** by the `labelma
 
 ## Elm Client Structure
 
-Minimal SPA using `Browser.application`:
+SPA using `Browser.application` with a label canvas editor:
 
 ```
 apps/labelmaker/client/src/
-├── Main.elm              # Entry point, routing, global state
+├── Main.elm              # Entry point, routing, port subscriptions, OutMsg handling
 ├── Route.elm             # Route type: Home | NotFound
 ├── Types.elm             # Shared types (RemoteData, Notification)
+├── Ports.elm             # Port module: text measurement (requestTextMeasure/receiveTextMeasureResult)
 ├── Api.elm               # HTTP functions (placeholder)
 ├── Api/
 │   ├── Decoders.elm      # JSON decoders (placeholder)
 │   └── Encoders.elm      # JSON encoders (placeholder)
-├── Ports.elm             # Port definitions (placeholder)
 ├── Components.elm        # Header, notification, loading
+├── Data/
+│   └── LabelTypes.elm    # Brother QL label specs (25 types, copied from FrostByte)
+├── main.js               # Elm init + text measurement JS handler (Canvas API)
 └── Page/
     ├── Home.elm          # Facade: Model, Msg, OutMsg, init, update, view
     ├── Home/
-    │   ├── Types.elm     # Minimal model + msg types
-    │   └── View.elm      # "Welcome to LabelMaker" page
+    │   ├── Types.elm     # Designer model, msgs, OutMsg, requestMeasurement helper
+    │   └── View.elm      # Two-column layout: SVG preview + editor controls
     ├── NotFound.elm      # Facade
     └── NotFound/
         └── View.elm      # 404 page
 ```
 
-**Architecture pattern:** Same as FrostByte — each page exposes Model, Msg, OutMsg, init, update, view. Pages communicate up via OutMsg.
+**Architecture pattern:** Same as FrostByte — each page exposes Model, Msg, OutMsg, init, update, view. Pages communicate up via OutMsg. Home page `init` returns a 3-tuple `(Model, Cmd Msg, OutMsg)` to trigger initial text measurement.
 
-**Routes:** `/` (Home)
+**Routes:** `/` (Home — label designer)
 
 **Styling:** Tailwind CSS with custom "label" color palette (warm brown tones)
 
 **Served on:** Port `:8080` via Caddy
+
+## Label Canvas Editor (Home Page)
+
+The Home page is a live label canvas editor with auto-sizing text.
+
+### Model
+
+- `labelTypeId` — Selected Brother QL label type (default: `"62"` = 62mm endless)
+- `labelWidth`, `labelHeight` — Label dimensions in pixels (from `Data.LabelTypes`)
+- `cornerRadius` — For round labels (width/2), 0 otherwise
+- `rotate` — `True` for die-cut rectangular labels (display swapped for landscape)
+- `variableName` — Template variable name (default: `"nombre"`)
+- `sampleValue` — Sample text shown on canvas (default: `"Pollo con arroz"`)
+- `fontFamily` — Font used for rendering (default: `"Atkinson Hyperlegible"`)
+- `maxFontSize`, `minFontSize` — Font size range for auto-sizing (default: 48/16)
+- `padding` — Inner padding in pixels (default: 20)
+- `computedText` — `Maybe ComputedText` with `fittedFontSize` and `lines` (from JS measurement)
+
+### Text Fitting Flow
+
+1. Any layout-affecting change (label type, sample value, font size, padding) emits `RequestTextMeasure` via OutMsg
+2. `Main.elm` sends the request through `Ports.requestTextMeasure`
+3. JavaScript (`main.js`) uses Canvas API `measureText()` to shrink font from max to min until text fits width
+4. If text still doesn't fit at min size, it word-wraps into multiple lines
+5. Result sent back via `Ports.receiveTextMeasureResult` → `Main.elm` → `GotTextMeasureResult` msg
+6. SVG preview re-renders with computed font size and wrapped lines
+
+### View Layout
+
+**Left column — SVG preview:**
+- White rectangle at label dimensions (swapped if `rotate=True`)
+- Bold text centered vertically and horizontally
+- Scaled to fit max 500px width
+- Dimension info below
+
+**Right column — Editor controls:**
+- Label type dropdown (25 Brother QL types)
+- Width (read-only) + height (editable for endless labels)
+- Variable name input (with `{{` `}}` decorators)
+- Sample value input
+- Max/min font size inputs
+- Padding input
+
+### Label Type Selection Logic
+
+When a label type is selected:
+- **Endless labels**: height = silver ratio (width * 2.414), cornerRadius = 0, rotate = false
+- **Die-cut rectangular**: height from spec, cornerRadius = 0, rotate = true (landscape display)
+- **Round die-cut**: height = width, cornerRadius = width/2, rotate = false
+
+## Working with Ports
+
+Ports are defined in `Ports.elm` and handled in `main.js`:
+
+```elm
+-- Request text measurement
+port requestTextMeasure : TextMeasureRequest -> Cmd msg
+-- Receive measurement result
+port receiveTextMeasureResult : (TextMeasureResult -> msg) -> Sub msg
+```
+
+**TextMeasureRequest fields:** `requestId`, `text`, `fontFamily`, `maxFontSize`, `minFontSize`, `maxWidth`
+
+**TextMeasureResult fields:** `requestId`, `fittedFontSize`, `lines` (List String)
+
+`Main.elm` subscribes to `receiveTextMeasureResult` and forwards results to the active page. The `RequestTextMeasure` OutMsg from the Home page triggers the port command.
+
+## Installing Elm Packages
+
+**IMPORTANT:** Do not manually edit `apps/labelmaker/client/elm.json` to add dependencies. Elm requires proper dependency resolution which only `elm install` can perform correctly.
+
+```bash
+cd apps/labelmaker/client
+docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm install -g elm && echo y | elm install <package-name>"
+```
+
+To verify compilation:
+
+```bash
+docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm install -g elm && elm make src/Main.elm --output=/dev/null"
+```
 
 ## API Reference
 

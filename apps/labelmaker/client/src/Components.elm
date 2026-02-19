@@ -21,7 +21,7 @@ viewHeader currentRoute =
                     , span [ class "text-2xl font-bold" ] [ text "LabelMaker" ]
                     ]
                 , nav [ class "flex space-x-4 items-center" ]
-                    [ navLink "/" "Inicio" (currentRoute == Home)
+                    [ navLink "/" "Dise\u{00F1}ador" (currentRoute == Home)
                     ]
                 ]
             ]

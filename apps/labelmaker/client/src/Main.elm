@@ -8,6 +8,7 @@ import Html.Attributes exposing (class)
 import Page.Home as Home
 import Page.Home.Types as HomeTypes
 import Page.NotFound as NotFound
+import Ports
 import Process
 import Route exposing (Route(..))
 import Task
@@ -78,6 +79,7 @@ type Msg
     = LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
     | HomeMsg Home.Msg
+    | GotTextMeasureResult Ports.TextMeasureResult
     | DismissNotification Int
 
 
@@ -117,6 +119,21 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        GotTextMeasureResult result ->
+            case model.page of
+                HomePage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            Home.update (HomeTypes.GotTextMeasureResult result) pageModel
+
+                        newModel =
+                            { model | page = HomePage newPageModel }
+                    in
+                    handleHomeOutMsg outMsg newModel pageCmd
+
+                _ ->
+                    ( model, Cmd.none )
+
         DismissNotification notificationId ->
             case model.notification of
                 Just notification ->
@@ -135,12 +152,13 @@ initPage route model =
     case route of
         Home ->
             let
-                ( pageModel, pageCmd ) =
+                ( pageModel, pageCmd, outMsg ) =
                     Home.init
+
+                newModel =
+                    { model | page = HomePage pageModel }
             in
-            ( { model | page = HomePage pageModel }
-            , Cmd.map HomeMsg pageCmd
-            )
+            handleHomeOutMsg outMsg newModel pageCmd
 
         NotFound ->
             ( { model | page = NotFoundPage }, Cmd.none )
@@ -181,6 +199,14 @@ handleHomeOutMsg outMsg model pageCmd =
         HomeTypes.NoOutMsg ->
             ( model, Cmd.map HomeMsg pageCmd )
 
+        HomeTypes.RequestTextMeasure request ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map HomeMsg pageCmd
+                , Ports.requestTextMeasure request
+                ]
+            )
+
 
 
 -- SUBSCRIPTIONS
@@ -188,7 +214,7 @@ handleHomeOutMsg outMsg model pageCmd =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Sub.none
+    Ports.receiveTextMeasureResult GotTextMeasureResult
 
 
 
