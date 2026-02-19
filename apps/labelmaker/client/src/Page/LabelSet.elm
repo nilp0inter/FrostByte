@@ -4,7 +4,6 @@ import Api
 import Data.LabelObject as LO
 import Dict
 import Html exposing (Html)
-import Json.Encode as Encode
 import Page.LabelSet.Types as Types
 import Page.LabelSet.View as View
 import Ports
@@ -197,13 +196,7 @@ update msg model =
             case model.labelsetName of
                 Dirty name ->
                     ( { model | labelsetName = Clean name }
-                    , Api.emitEvent "labelset_name_set"
-                        (Encode.object
-                            [ ( "labelset_id", Encode.string model.labelsetId )
-                            , ( "name", Encode.string name )
-                            ]
-                        )
-                        Types.EventEmitted
+                    , Api.setLabelsetName model.labelsetId name Types.EventEmitted
                     , Types.NoOutMsg
                     )
 
@@ -348,13 +341,7 @@ update msg model =
 
 emitRowsSet : String -> List (Dict.Dict String String) -> Cmd Msg
 emitRowsSet labelsetId rows =
-    Api.emitEvent "labelset_rows_set"
-        (Encode.object
-            [ ( "labelset_id", Encode.string labelsetId )
-            , ( "rows", Encode.list (Encode.dict identity Encode.string) rows )
-            ]
-        )
-        Types.EventEmitted
+    Api.setLabelsetRows labelsetId rows Types.EventEmitted
 
 
 view : Model -> Html Msg

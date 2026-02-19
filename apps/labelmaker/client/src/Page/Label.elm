@@ -4,7 +4,6 @@ import Api
 import Data.LabelObject as LO
 import Dict
 import Html exposing (Html)
-import Json.Encode as Encode
 import Page.Label.Types as Types
 import Page.Label.View as View
 import Ports
@@ -68,13 +67,7 @@ update msg model =
             case model.labelName of
                 Dirty name ->
                     ( { model | labelName = Clean name }
-                    , Api.emitEvent "label_name_set"
-                        (Encode.object
-                            [ ( "label_id", Encode.string model.labelId )
-                            , ( "name", Encode.string name )
-                            ]
-                        )
-                        Types.EventEmitted
+                    , Api.setLabelName model.labelId name Types.EventEmitted
                     , Types.NoOutMsg
                     )
 
@@ -114,13 +107,7 @@ update msg model =
                         Dict.map (\_ v -> getValue v) model.values
                 in
                 ( { model | values = cleanValues }
-                , Api.emitEvent "label_values_set"
-                    (Encode.object
-                        [ ( "label_id", Encode.string model.labelId )
-                        , ( "values", Encode.dict identity Encode.string plainValues )
-                        ]
-                    )
-                    Types.EventEmitted
+                , Api.setLabelValues model.labelId plainValues Types.EventEmitted
                 , Types.NoOutMsg
                 )
 

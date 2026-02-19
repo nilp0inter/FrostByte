@@ -5,7 +5,6 @@ module Api exposing
     , deleteLabel
     , deleteLabelSet
     , deleteTemplate
-    , emitEvent
     , fetchLabelDetail
     , fetchLabelList
     , fetchLabelSetDetail
@@ -13,10 +12,21 @@ module Api exposing
     , fetchTemplateList
     , fetchTemplateDetail
     , printLabelPng
+    , setLabelName
+    , setLabelValues
+    , setLabelsetName
+    , setLabelsetRows
+    , setTemplateContent
+    , setTemplateHeight
+    , setTemplateLabelType
+    , setTemplateName
+    , setTemplatePadding
+    , setTemplateSampleValue
     )
 
 import Api.Decoders as Decoders
 import Api.Encoders as Encoders
+import Dict
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -51,20 +61,109 @@ createTemplate name toMsg =
         }
 
 
-emitEvent : String -> Encode.Value -> (Result Http.Error () -> msg) -> Cmd msg
-emitEvent eventType payload toMsg =
+deleteTemplate : String -> (Result Http.Error () -> msg) -> Cmd msg
+deleteTemplate templateId toMsg =
     Http.post
-        { url = "/api/db/event"
-        , body = Http.jsonBody (Encoders.encodeEvent eventType payload)
+        { url = "/api/db/rpc/delete_template"
+        , body = Http.jsonBody (Encode.object [ ( "p_template_id", Encode.string templateId ) ])
         , expect = Http.expectWhatever toMsg
         }
 
 
-deleteTemplate : String -> (Result Http.Error () -> msg) -> Cmd msg
-deleteTemplate templateId toMsg =
-    emitEvent "template_deleted"
-        (Encode.object [ ( "template_id", Encode.string templateId ) ])
-        toMsg
+setTemplateName : String -> String -> (Result Http.Error () -> msg) -> Cmd msg
+setTemplateName templateId name toMsg =
+    Http.post
+        { url = "/api/db/rpc/set_template_name"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_template_id", Encode.string templateId )
+                    , ( "p_name", Encode.string name )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        }
+
+
+setTemplateLabelType : String -> String -> Int -> Int -> Int -> Bool -> (Result Http.Error () -> msg) -> Cmd msg
+setTemplateLabelType templateId labelTypeId labelWidth labelHeight cornerRadius rotate toMsg =
+    Http.post
+        { url = "/api/db/rpc/set_template_label_type"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_template_id", Encode.string templateId )
+                    , ( "p_label_type_id", Encode.string labelTypeId )
+                    , ( "p_label_width", Encode.int labelWidth )
+                    , ( "p_label_height", Encode.int labelHeight )
+                    , ( "p_corner_radius", Encode.int cornerRadius )
+                    , ( "p_rotate", Encode.bool rotate )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        }
+
+
+setTemplateHeight : String -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+setTemplateHeight templateId labelHeight toMsg =
+    Http.post
+        { url = "/api/db/rpc/set_template_height"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_template_id", Encode.string templateId )
+                    , ( "p_label_height", Encode.int labelHeight )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        }
+
+
+setTemplatePadding : String -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+setTemplatePadding templateId padding toMsg =
+    Http.post
+        { url = "/api/db/rpc/set_template_padding"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_template_id", Encode.string templateId )
+                    , ( "p_padding", Encode.int padding )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        }
+
+
+setTemplateContent : String -> Encode.Value -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+setTemplateContent templateId content nextId toMsg =
+    Http.post
+        { url = "/api/db/rpc/set_template_content"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_template_id", Encode.string templateId )
+                    , ( "p_content", content )
+                    , ( "p_next_id", Encode.int nextId )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        }
+
+
+setTemplateSampleValue : String -> String -> String -> (Result Http.Error () -> msg) -> Cmd msg
+setTemplateSampleValue templateId variableName value toMsg =
+    Http.post
+        { url = "/api/db/rpc/set_template_sample_value"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_template_id", Encode.string templateId )
+                    , ( "p_variable_name", Encode.string variableName )
+                    , ( "p_value", Encode.string value )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        }
 
 
 fetchLabelList : (Result Http.Error (List Decoders.LabelSummary) -> msg) -> Cmd msg
@@ -104,9 +203,41 @@ createLabel templateId name toMsg =
 
 deleteLabel : String -> (Result Http.Error () -> msg) -> Cmd msg
 deleteLabel labelId toMsg =
-    emitEvent "label_deleted"
-        (Encode.object [ ( "label_id", Encode.string labelId ) ])
-        toMsg
+    Http.post
+        { url = "/api/db/rpc/delete_label"
+        , body = Http.jsonBody (Encode.object [ ( "p_label_id", Encode.string labelId ) ])
+        , expect = Http.expectWhatever toMsg
+        }
+
+
+setLabelName : String -> String -> (Result Http.Error () -> msg) -> Cmd msg
+setLabelName labelId name toMsg =
+    Http.post
+        { url = "/api/db/rpc/set_label_name"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_label_id", Encode.string labelId )
+                    , ( "p_name", Encode.string name )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        }
+
+
+setLabelValues : String -> Dict.Dict String String -> (Result Http.Error () -> msg) -> Cmd msg
+setLabelValues labelId values toMsg =
+    Http.post
+        { url = "/api/db/rpc/set_label_values"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_label_id", Encode.string labelId )
+                    , ( "p_values", Encode.dict identity Encode.string values )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        }
 
 
 fetchLabelSetList : (Result Http.Error (List Decoders.LabelSetSummary) -> msg) -> Cmd msg
@@ -146,9 +277,41 @@ createLabelSet templateId name toMsg =
 
 deleteLabelSet : String -> (Result Http.Error () -> msg) -> Cmd msg
 deleteLabelSet labelsetId toMsg =
-    emitEvent "labelset_deleted"
-        (Encode.object [ ( "labelset_id", Encode.string labelsetId ) ])
-        toMsg
+    Http.post
+        { url = "/api/db/rpc/delete_labelset"
+        , body = Http.jsonBody (Encode.object [ ( "p_labelset_id", Encode.string labelsetId ) ])
+        , expect = Http.expectWhatever toMsg
+        }
+
+
+setLabelsetName : String -> String -> (Result Http.Error () -> msg) -> Cmd msg
+setLabelsetName labelsetId name toMsg =
+    Http.post
+        { url = "/api/db/rpc/set_labelset_name"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_labelset_id", Encode.string labelsetId )
+                    , ( "p_name", Encode.string name )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        }
+
+
+setLabelsetRows : String -> List (Dict.Dict String String) -> (Result Http.Error () -> msg) -> Cmd msg
+setLabelsetRows labelsetId rows toMsg =
+    Http.post
+        { url = "/api/db/rpc/set_labelset_rows"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "p_labelset_id", Encode.string labelsetId )
+                    , ( "p_rows", Encode.list (Encode.dict identity Encode.string) rows )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        }
 
 
 printLabelPng : String -> String -> (Result Http.Error () -> msg) -> Cmd msg

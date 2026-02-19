@@ -37,7 +37,6 @@ labelmaker_api    — External interface: read views + RPC write functions (expo
 - **`labelmaker_logic.replay_all_events()`**: Truncates labelset, label, and template tables and rebuilds from events
 
 **API schema (idempotent — `labelmaker_api`):**
-- **`labelmaker_api.event`**: View exposing the event store (supports INSERT for writes)
 - **`labelmaker_api.template_list`**: Summary view for list page (id, name, label_type_id, created_at; excludes deleted)
 - **`labelmaker_api.template_detail`**: Full state view for editor (all fields; excludes deleted)
 - **`labelmaker_api.label_list`**: Label summary view (id, template_id, template_name, label_type_id, name, values, created_at; joins template, excludes deleted)
@@ -47,6 +46,19 @@ labelmaker_api    — External interface: read views + RPC write functions (expo
 - **`labelmaker_api.labelset_list`**: LabelSet summary view (id, template_id, template_name, label_type_id, name, row_count, created_at; joins template, excludes deleted)
 - **`labelmaker_api.labelset_detail`**: Full labelset+template data for rendering (includes template dimensions, content, padding, rows)
 - **`labelmaker_api.create_labelset(p_template_id, p_name)`**: RPC function that generates UUID, copies template's sample_values as first row, inserts `labelset_created` event, returns `labelset_id`
+- **`labelmaker_api.delete_template(p_template_id)`**: RPC function, inserts `template_deleted` event
+- **`labelmaker_api.set_template_name(p_template_id, p_name)`**: RPC function, inserts `template_name_set` event
+- **`labelmaker_api.set_template_label_type(p_template_id, p_label_type_id, p_label_width, p_label_height, p_corner_radius, p_rotate)`**: RPC function, inserts `template_label_type_set` event
+- **`labelmaker_api.set_template_height(p_template_id, p_label_height)`**: RPC function, inserts `template_height_set` event
+- **`labelmaker_api.set_template_padding(p_template_id, p_padding)`**: RPC function, inserts `template_padding_set` event
+- **`labelmaker_api.set_template_content(p_template_id, p_content, p_next_id)`**: RPC function, inserts `template_content_set` event
+- **`labelmaker_api.set_template_sample_value(p_template_id, p_variable_name, p_value)`**: RPC function, inserts `template_sample_value_set` event
+- **`labelmaker_api.delete_label(p_label_id)`**: RPC function, inserts `label_deleted` event
+- **`labelmaker_api.set_label_name(p_label_id, p_name)`**: RPC function, inserts `label_name_set` event
+- **`labelmaker_api.set_label_values(p_label_id, p_values)`**: RPC function, inserts `label_values_set` event
+- **`labelmaker_api.delete_labelset(p_labelset_id)`**: RPC function, inserts `labelset_deleted` event
+- **`labelmaker_api.set_labelset_name(p_labelset_id, p_name)`**: RPC function, inserts `labelset_name_set` event
+- **`labelmaker_api.set_labelset_rows(p_labelset_id, p_rows)`**: RPC function, inserts `labelset_rows_set` event
 
 ## Event Types (16)
 
@@ -106,7 +118,7 @@ apps/labelmaker/client/src/
 ├── Api.elm               # HTTP functions (templates, labels, labelsets, printing)
 ├── Api/
 │   ├── Decoders.elm      # JSON decoders (TemplateSummary, TemplateDetail, LabelSummary, LabelDetail, LabelSetSummary, LabelSetDetail, etc.)
-│   └── Encoders.elm      # JSON encoders (encodeEvent, encodeLabelObject, encodePrintRequest, etc.)
+│   └── Encoders.elm      # JSON encoders (encodeLabelObject, encodePrintRequest, etc.)
 ├── Components.elm        # Header, notification, loading
 ├── Data/
 │   ├── LabelObject.elm   # Label object types, tree operations, constructors, allVariableNames
@@ -169,7 +181,7 @@ getValue : Committable a -> a
 **How it works:**
 - Text/number `onInput` handlers set the model field to `Dirty newValue` (updates preview instantly, no HTTP POST)
 - `onBlur` handlers (Commit* msgs) pattern-match: only emit the event if the value is `Dirty`, then set it to `Clean`
-- Discrete actions (dropdown selects, button clicks like Add/Remove) set `Clean` and persist immediately via `withEvent`/`withContentEvent`
+- Discrete actions (dropdown selects, button clicks like Add/Remove) set `Clean` and persist immediately via `withCmd`/`withContentCmd`
 
 **Template editor (Home.elm):**
 - Wrapped fields: `templateName`, `labelHeight`, `padding`, `content`, `sampleValues`
@@ -185,7 +197,7 @@ getValue : Committable a -> a
 - Deferred: `UpdateName`/`CommitName`, `UpdateCell`/`CommitRows`
 - Immediate: `AddRow`, `DeleteRow`
 
-Content changes use `withContentEvent` which sends the full object tree. Ephemeral state (`SelectObject`, `GotTextMeasureResult`, `EventEmitted`) is NOT persisted.
+Content changes use `withContentCmd` which sends the full object tree via `Api.setTemplateContent`. Ephemeral state (`SelectObject`, `GotTextMeasureResult`, `EventEmitted`) is NOT persisted.
 
 ### Template Editor Init Flow
 
@@ -423,8 +435,19 @@ docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm install -g el
 | `/api/db/labelset_list` | GET | List all labelsets (summary with template info, excludes deleted) |
 | `/api/db/labelset_detail?id=eq.<uuid>` | GET | Full labelset+template data for rendering |
 | `/api/db/rpc/create_labelset` | POST | Create labelset from template (body: `{"p_template_id":"uuid","p_name":"..."}`, returns `[{"labelset_id":"uuid"}]`) |
-| `/api/db/event` | POST | Insert event (body: `{"type":"...","payload":{...}}`) |
-| `/api/db/event` | GET | Event store (for backup) |
+| `/api/db/rpc/delete_template` | POST | Delete template (body: `{"p_template_id":"uuid"}`) |
+| `/api/db/rpc/set_template_name` | POST | Set template name (body: `{"p_template_id":"uuid","p_name":"..."}`) |
+| `/api/db/rpc/set_template_label_type` | POST | Set template label type (body: `{"p_template_id":"uuid","p_label_type_id":"...","p_label_width":N,"p_label_height":N,"p_corner_radius":N,"p_rotate":bool}`) |
+| `/api/db/rpc/set_template_height` | POST | Set template height (body: `{"p_template_id":"uuid","p_label_height":N}`) |
+| `/api/db/rpc/set_template_padding` | POST | Set template padding (body: `{"p_template_id":"uuid","p_padding":N}`) |
+| `/api/db/rpc/set_template_content` | POST | Set template content (body: `{"p_template_id":"uuid","p_content":[...],"p_next_id":N}`) |
+| `/api/db/rpc/set_template_sample_value` | POST | Set template sample value (body: `{"p_template_id":"uuid","p_variable_name":"...","p_value":"..."}`) |
+| `/api/db/rpc/delete_label` | POST | Delete label (body: `{"p_label_id":"uuid"}`) |
+| `/api/db/rpc/set_label_name` | POST | Set label name (body: `{"p_label_id":"uuid","p_name":"..."}`) |
+| `/api/db/rpc/set_label_values` | POST | Set label values (body: `{"p_label_id":"uuid","p_values":{...}}`) |
+| `/api/db/rpc/delete_labelset` | POST | Delete labelset (body: `{"p_labelset_id":"uuid"}`) |
+| `/api/db/rpc/set_labelset_name` | POST | Set labelset name (body: `{"p_labelset_id":"uuid","p_name":"..."}`) |
+| `/api/db/rpc/set_labelset_rows` | POST | Set labelset rows (body: `{"p_labelset_id":"uuid","p_rows":[{...},...]}`) |
 | `/api/printer/print` | POST | Print PNG label (body: `{"image_data":"base64...","label_type":"62"}`) |
 | `/api/printer/health` | GET | Printer service health check |
 

@@ -1,6 +1,5 @@
 module Api.Encoders exposing
     ( encodeColor
-    , encodeEvent
     , encodeLabelObject
     , encodeLabelObjectList
     , encodePrintRequest
@@ -11,14 +10,6 @@ module Api.Encoders exposing
 
 import Data.LabelObject as LO exposing (LabelObject(..), ShapeType(..))
 import Json.Encode as Encode
-
-
-encodeEvent : String -> Encode.Value -> Encode.Value
-encodeEvent eventType payload =
-    Encode.object
-        [ ( "type", Encode.string eventType )
-        , ( "payload", payload )
-        ]
 
 
 encodeLabelObjectList : List LabelObject -> Encode.Value

@@ -23,9 +23,6 @@ CREATE VIEW frostbyte_api.portion AS
 SELECT id, batch_id, created_at, expiry_date, status, consumed_at, discarded_at, print_count
 FROM frostbyte_logic.portion;
 
-CREATE VIEW frostbyte_api.event AS
-SELECT * FROM frostbyte_data.event;
-
 -- Batch ingredients: exposed for edit page pre-fill
 CREATE VIEW frostbyte_api.batch_ingredient AS
 SELECT batch_id, ingredient_name FROM frostbyte_logic.batch_ingredient;

@@ -6,7 +6,6 @@ import Data.LabelObject as LO exposing (LabelObject(..), ObjectId)
 import Data.LabelTypes exposing (LabelTypeSpec, labelTypes, silverRatioHeight)
 import Dict
 import Html exposing (Html)
-import Json.Encode as Encode
 import Page.Home.Types as Types exposing (PropertyChange(..))
 import Types exposing (Committable(..), getValue)
 import Page.Home.View as View
@@ -83,15 +82,14 @@ update msg model =
                             model
             in
             ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
-                |> withEvent "template_label_type_set"
-                    (Encode.object
-                        [ ( "template_id", Encode.string model.templateId )
-                        , ( "label_type_id", Encode.string newModel.labelTypeId )
-                        , ( "label_width", Encode.int newModel.labelWidth )
-                        , ( "label_height", Encode.int (getValue newModel.labelHeight) )
-                        , ( "corner_radius", Encode.int newModel.cornerRadius )
-                        , ( "rotate", Encode.bool newModel.rotate )
-                        ]
+                |> withCmd
+                    (Api.setTemplateLabelType model.templateId
+                        newModel.labelTypeId
+                        newModel.labelWidth
+                        (getValue newModel.labelHeight)
+                        newModel.cornerRadius
+                        newModel.rotate
+                        Types.EventEmitted
                     )
 
         Types.HeightChanged str ->
@@ -147,7 +145,7 @@ update msg model =
                     }
             in
             ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
-                |> withContentEvent newModel
+                |> withContentCmd newModel
 
         Types.RemoveObject targetId ->
             let
@@ -167,7 +165,7 @@ update msg model =
                     }
             in
             ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
-                |> withContentEvent newModel
+                |> withContentCmd newModel
 
         Types.UpdateObjectProperty targetId change ->
             let
@@ -237,7 +235,7 @@ update msg model =
                         ( newModel, Cmd.none, Types.NoOutMsg )
             in
             if isImmediate then
-                result |> withContentEvent newModel
+                result |> withContentCmd newModel
 
             else
                 result
@@ -272,13 +270,7 @@ update msg model =
             case model.templateName of
                 Dirty name ->
                     ( { model | templateName = Clean name }
-                    , Api.emitEvent "template_name_set"
-                        (Encode.object
-                            [ ( "template_id", Encode.string model.templateId )
-                            , ( "name", Encode.string name )
-                            ]
-                        )
-                        Types.EventEmitted
+                    , Api.setTemplateName model.templateId name Types.EventEmitted
                     , Types.NoOutMsg
                     )
 
@@ -289,13 +281,7 @@ update msg model =
             case model.labelHeight of
                 Dirty h ->
                     ( { model | labelHeight = Clean h }
-                    , Api.emitEvent "template_height_set"
-                        (Encode.object
-                            [ ( "template_id", Encode.string model.templateId )
-                            , ( "label_height", Encode.int h )
-                            ]
-                        )
-                        Types.EventEmitted
+                    , Api.setTemplateHeight model.templateId h Types.EventEmitted
                     , Types.NoOutMsg
                     )
 
@@ -306,13 +292,7 @@ update msg model =
             case model.padding of
                 Dirty p ->
                     ( { model | padding = Clean p }
-                    , Api.emitEvent "template_padding_set"
-                        (Encode.object
-                            [ ( "template_id", Encode.string model.templateId )
-                            , ( "padding", Encode.int p )
-                            ]
-                        )
-                        Types.EventEmitted
+                    , Api.setTemplatePadding model.templateId p Types.EventEmitted
                     , Types.NoOutMsg
                     )
 
@@ -327,7 +307,7 @@ update msg model =
                             { model | content = Clean content }
                     in
                     ( newModel, Cmd.none, Types.NoOutMsg )
-                        |> withContentEvent newModel
+                        |> withContentCmd newModel
 
                 Clean _ ->
                     ( model, Cmd.none, Types.NoOutMsg )
@@ -336,14 +316,7 @@ update msg model =
             case Dict.get varName model.sampleValues of
                 Just (Dirty val) ->
                     ( { model | sampleValues = Dict.insert varName (Clean val) model.sampleValues }
-                    , Api.emitEvent "template_sample_value_set"
-                        (Encode.object
-                            [ ( "template_id", Encode.string model.templateId )
-                            , ( "variable_name", Encode.string varName )
-                            , ( "value", Encode.string val )
-                            ]
-                        )
-                        Types.EventEmitted
+                    , Api.setTemplateSampleValue model.templateId varName val Types.EventEmitted
                     , Types.NoOutMsg
                     )
 
@@ -354,22 +327,21 @@ update msg model =
             ( model, Cmd.none, Types.NoOutMsg )
 
 
-withEvent : String -> Encode.Value -> ( Model, Cmd Msg, OutMsg ) -> ( Model, Cmd Msg, OutMsg )
-withEvent eventType payload ( model, cmd, outMsg ) =
+withCmd : Cmd Msg -> ( Model, Cmd Msg, OutMsg ) -> ( Model, Cmd Msg, OutMsg )
+withCmd extraCmd ( model, cmd, outMsg ) =
     ( model
-    , Cmd.batch [ cmd, Api.emitEvent eventType payload Types.EventEmitted ]
+    , Cmd.batch [ cmd, extraCmd ]
     , outMsg
     )
 
 
-withContentEvent : Model -> ( Model, Cmd Msg, OutMsg ) -> ( Model, Cmd Msg, OutMsg )
-withContentEvent newModel tuple =
-    withEvent "template_content_set"
-        (Encode.object
-            [ ( "template_id", Encode.string newModel.templateId )
-            , ( "content", Encoders.encodeLabelObjectList (getValue newModel.content) )
-            , ( "next_id", Encode.int newModel.nextId )
-            ]
+withContentCmd : Model -> ( Model, Cmd Msg, OutMsg ) -> ( Model, Cmd Msg, OutMsg )
+withContentCmd newModel tuple =
+    withCmd
+        (Api.setTemplateContent newModel.templateId
+            (Encoders.encodeLabelObjectList (getValue newModel.content))
+            newModel.nextId
+            Types.EventEmitted
         )
         tuple
 

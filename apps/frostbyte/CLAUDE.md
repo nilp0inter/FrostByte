@@ -254,7 +254,6 @@ All writes go through RPC functions (POST). Reads use PostgREST views (GET).
 | `/api/db/recipe_summary` | GET | List recipes with ingredients |
 | `/api/db/container_type` | GET | List container types |
 | `/api/db/label_preset` | GET | List label presets |
-| `/api/db/event` | GET | Event store (for backup) |
 | `/api/printer/print` | POST | Print PNG label (body: `{image_data: "base64..."}`) |
 | `/api/printer/health` | GET | Printer service health check |
 
