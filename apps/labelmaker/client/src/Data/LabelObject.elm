@@ -256,8 +256,16 @@ allVariableNames objects =
                 objs
     in
     collect objects
-        |> Set.fromList
-        |> Set.toList
+        |> List.foldl
+            (\name ( seen, acc ) ->
+                if Set.member name seen then
+                    ( seen, acc )
+
+                else
+                    ( Set.insert name seen, acc ++ [ name ] )
+            )
+            ( Set.empty, [] )
+        |> Tuple.second
 
 
 allTextObjectIds : List LabelObject -> List ObjectId
