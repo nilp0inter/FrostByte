@@ -69,6 +69,7 @@ KitchenStack/
 - **Schema namespacing**: Each app prefixes its schemas (e.g., `frostbyte_data`, `frostbyte_logic`, `frostbyte_api`)
 - **PostgREST**: Exposes `frostbyte_api,labelmaker_api` schemas (comma-separated `PGRST_DB_SCHEMA`)
 - **Schema isolation**: Caddy injects `Accept-Profile` and `Content-Profile` headers per port, so each app is pinned to its own schema without clients needing to set headers
+- **Persistent volume**: `kitchen_postgres_data` is an external Docker volume — `docker compose down` cannot remove it. Must be created manually once (`docker volume create kitchen_postgres_data`) or via the bootstrap/deploy playbooks
 
 ## Production Environment
 
