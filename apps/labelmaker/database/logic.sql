@@ -6,14 +6,128 @@ DROP SCHEMA IF EXISTS labelmaker_logic CASCADE;
 CREATE SCHEMA labelmaker_logic;
 
 -- =============================================================================
+-- Projection Tables (rebuilt from events on replay)
+-- =============================================================================
+
+CREATE TABLE labelmaker_logic.template (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT 'Sin nombre',
+    label_type_id TEXT NOT NULL DEFAULT '62',
+    label_width INTEGER NOT NULL DEFAULT 696,
+    label_height INTEGER NOT NULL DEFAULT 1680,
+    corner_radius INTEGER NOT NULL DEFAULT 0,
+    rotate BOOLEAN NOT NULL DEFAULT FALSE,
+    padding INTEGER NOT NULL DEFAULT 20,
+    content JSONB NOT NULL DEFAULT '[]'::JSONB,
+    next_id INTEGER NOT NULL DEFAULT 2,
+    sample_values JSONB NOT NULL DEFAULT '{}'::JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- =============================================================================
+-- Event Handler Functions
+-- =============================================================================
+
+CREATE FUNCTION labelmaker_logic.apply_template_created(p JSONB, p_created_at TIMESTAMPTZ)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO labelmaker_logic.template (id, name, created_at)
+    VALUES ((p->>'template_id')::UUID, p->>'name', p_created_at);
+END;
+$$;
+
+CREATE FUNCTION labelmaker_logic.apply_template_deleted(p JSONB)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE labelmaker_logic.template SET deleted = TRUE
+    WHERE id = (p->>'template_id')::UUID;
+END;
+$$;
+
+CREATE FUNCTION labelmaker_logic.apply_template_name_set(p JSONB)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE labelmaker_logic.template SET name = p->>'name'
+    WHERE id = (p->>'template_id')::UUID;
+END;
+$$;
+
+CREATE FUNCTION labelmaker_logic.apply_template_label_type_set(p JSONB)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE labelmaker_logic.template
+    SET label_type_id = p->>'label_type_id',
+        label_width = (p->>'label_width')::INTEGER,
+        label_height = (p->>'label_height')::INTEGER,
+        corner_radius = (p->>'corner_radius')::INTEGER,
+        rotate = (p->>'rotate')::BOOLEAN
+    WHERE id = (p->>'template_id')::UUID;
+END;
+$$;
+
+CREATE FUNCTION labelmaker_logic.apply_template_height_set(p JSONB)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE labelmaker_logic.template SET label_height = (p->>'label_height')::INTEGER
+    WHERE id = (p->>'template_id')::UUID;
+END;
+$$;
+
+CREATE FUNCTION labelmaker_logic.apply_template_padding_set(p JSONB)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE labelmaker_logic.template SET padding = (p->>'padding')::INTEGER
+    WHERE id = (p->>'template_id')::UUID;
+END;
+$$;
+
+CREATE FUNCTION labelmaker_logic.apply_template_content_set(p JSONB)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE labelmaker_logic.template
+    SET content = p->'content',
+        next_id = (p->>'next_id')::INTEGER
+    WHERE id = (p->>'template_id')::UUID;
+END;
+$$;
+
+CREATE FUNCTION labelmaker_logic.apply_template_sample_value_set(p JSONB)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE labelmaker_logic.template
+    SET sample_values = sample_values || jsonb_build_object(p->>'variable_name', p->>'value')
+    WHERE id = (p->>'template_id')::UUID;
+END;
+$$;
+
+-- =============================================================================
 -- Event Dispatcher
 -- =============================================================================
 
 CREATE FUNCTION labelmaker_logic.apply_event(p_type TEXT, p_payload JSONB, p_created_at TIMESTAMPTZ)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
-    -- No event types handled yet; warn on any unknown type
-    RAISE WARNING 'Unknown event type: %', p_type;
+    CASE p_type
+        WHEN 'template_created' THEN
+            PERFORM labelmaker_logic.apply_template_created(p_payload, p_created_at);
+        WHEN 'template_deleted' THEN
+            PERFORM labelmaker_logic.apply_template_deleted(p_payload);
+        WHEN 'template_name_set' THEN
+            PERFORM labelmaker_logic.apply_template_name_set(p_payload);
+        WHEN 'template_label_type_set' THEN
+            PERFORM labelmaker_logic.apply_template_label_type_set(p_payload);
+        WHEN 'template_height_set' THEN
+            PERFORM labelmaker_logic.apply_template_height_set(p_payload);
+        WHEN 'template_padding_set' THEN
+            PERFORM labelmaker_logic.apply_template_padding_set(p_payload);
+        WHEN 'template_content_set' THEN
+            PERFORM labelmaker_logic.apply_template_content_set(p_payload);
+        WHEN 'template_sample_value_set' THEN
+            PERFORM labelmaker_logic.apply_template_sample_value_set(p_payload);
+        ELSE
+            RAISE WARNING 'Unknown event type: %', p_type;
+    END CASE;
 END;
 $$;
 
@@ -40,9 +154,8 @@ CREATE TRIGGER event_handler
 CREATE FUNCTION labelmaker_logic.replay_all_events()
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
-    -- No projection tables to truncate yet
+    TRUNCATE labelmaker_logic.template;
 
-    -- Replay each event in order (calls apply_event directly, no trigger)
     PERFORM labelmaker_logic.apply_event(e.type, e.payload, e.created_at)
     FROM labelmaker_data.event e ORDER BY e.id;
 END;

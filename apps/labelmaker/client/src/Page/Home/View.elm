@@ -4,7 +4,7 @@ import Data.LabelObject as LO exposing (LabelObject(..), ObjectId, ShapeType(..)
 import Data.LabelTypes exposing (LabelTypeSpec, isEndlessLabel, labelTypes)
 import Dict
 import Html exposing (..)
-import Html.Attributes exposing (class, classList, for, id, max, min, placeholder, selected, step, style, type_, value)
+import Html.Attributes exposing (class, classList, for, href, id, max, min, placeholder, selected, step, style, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Page.Home.Types exposing (ComputedText, Model, Msg(..), PropertyChange(..))
 import Svg exposing (svg)
@@ -14,9 +14,25 @@ import Svg.Events as SE
 
 view : Model -> Html Msg
 view model =
-    div [ class "flex flex-col lg:flex-row gap-8" ]
-        [ viewPreview model
-        , viewControls model
+    div []
+        [ div [ class "flex items-center gap-4 mb-6" ]
+            [ a
+                [ href "/"
+                , class "text-label-600 hover:text-label-800 transition-colors"
+                ]
+                [ text "\u{2190} Plantillas" ]
+            , input
+                [ type_ "text"
+                , class "text-xl font-bold text-gray-800 border-b border-transparent hover:border-gray-300 focus:border-label-500 focus:outline-none px-1 py-0.5"
+                , value model.templateName
+                , onInput TemplateNameChanged
+                ]
+                []
+            ]
+        , div [ class "flex flex-col lg:flex-row gap-8" ]
+            [ viewPreview model
+            , viewControls model
+            ]
         ]
 
 

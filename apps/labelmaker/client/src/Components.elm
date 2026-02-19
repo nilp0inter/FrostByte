@@ -21,7 +21,7 @@ viewHeader currentRoute =
                     , span [ class "text-2xl font-bold" ] [ text "LabelMaker" ]
                     ]
                 , nav [ class "flex space-x-4 items-center" ]
-                    [ navLink "/" "Dise\u{00F1}ador" (currentRoute == Home)
+                    [ navLink "/" "Plantillas" (currentRoute == TemplateList)
                     ]
                 ]
             ]
@@ -54,13 +54,13 @@ viewNotification maybeNotification dismissMsg =
                 ( bgColor, icon ) =
                     case notification.notificationType of
                         Success ->
-                            ( "bg-green-500", "✓" )
+                            ( "bg-green-500", "\u{2713}" )
 
                         Info ->
-                            ( "bg-blue-500", "ℹ" )
+                            ( "bg-blue-500", "\u{2139}" )
 
                         Error ->
-                            ( "bg-red-500", "✕" )
+                            ( "bg-red-500", "\u{2715}" )
             in
             div [ class ("fixed top-4 right-4 z-50 " ++ bgColor ++ " text-white px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2") ]
                 [ span [] [ text icon ]
@@ -69,7 +69,7 @@ viewNotification maybeNotification dismissMsg =
                     [ class "ml-4 hover:opacity-75"
                     , onClick (dismissMsg notification.id)
                     ]
-                    [ text "✕" ]
+                    [ text "\u{2715}" ]
                 ]
 
 

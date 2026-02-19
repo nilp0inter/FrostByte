@@ -5,11 +5,12 @@ module Route exposing
     )
 
 import Url exposing (Url)
-import Url.Parser as Parser exposing (Parser)
+import Url.Parser as Parser exposing (Parser, (</>))
 
 
 type Route
-    = Home
+    = TemplateList
+    | TemplateEditor String
     | NotFound
 
 
@@ -21,5 +22,6 @@ parseUrl url =
 routeParser : Parser (Route -> a) a
 routeParser =
     Parser.oneOf
-        [ Parser.map Home Parser.top
+        [ Parser.map TemplateList Parser.top
+        , Parser.map TemplateEditor (Parser.s "template" </> Parser.string)
         ]

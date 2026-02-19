@@ -8,6 +8,8 @@ import Html.Attributes exposing (class)
 import Page.Home as Home
 import Page.Home.Types as HomeTypes
 import Page.NotFound as NotFound
+import Page.Templates as Templates
+import Page.Templates.Types as TemplatesTypes
 import Ports
 import Process
 import Route exposing (Route(..))
@@ -48,7 +50,8 @@ type alias Model =
 
 
 type Page
-    = HomePage Home.Model
+    = TemplateListPage Templates.Model
+    | TemplateEditorPage Home.Model
     | NotFoundPage
 
 
@@ -79,6 +82,7 @@ type Msg
     = LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
     | HomeMsg Home.Msg
+    | TemplatesMsg Templates.Msg
     | GotTextMeasureResult Ports.TextMeasureResult
     | DismissNotification Int
 
@@ -106,28 +110,43 @@ update msg model =
 
         HomeMsg subMsg ->
             case model.page of
-                HomePage pageModel ->
+                TemplateEditorPage pageModel ->
                     let
                         ( newPageModel, pageCmd, outMsg ) =
                             Home.update subMsg pageModel
 
                         newModel =
-                            { model | page = HomePage newPageModel }
+                            { model | page = TemplateEditorPage newPageModel }
                     in
                     handleHomeOutMsg outMsg newModel pageCmd
 
                 _ ->
                     ( model, Cmd.none )
 
+        TemplatesMsg subMsg ->
+            case model.page of
+                TemplateListPage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            Templates.update subMsg pageModel
+
+                        newModel =
+                            { model | page = TemplateListPage newPageModel }
+                    in
+                    handleTemplatesOutMsg outMsg newModel pageCmd
+
+                _ ->
+                    ( model, Cmd.none )
+
         GotTextMeasureResult result ->
             case model.page of
-                HomePage pageModel ->
+                TemplateEditorPage pageModel ->
                     let
                         ( newPageModel, pageCmd, outMsg ) =
                             Home.update (HomeTypes.GotTextMeasureResult result) pageModel
 
                         newModel =
-                            { model | page = HomePage newPageModel }
+                            { model | page = TemplateEditorPage newPageModel }
                     in
                     handleHomeOutMsg outMsg newModel pageCmd
 
@@ -150,13 +169,23 @@ update msg model =
 initPage : Route -> Model -> ( Model, Cmd Msg )
 initPage route model =
     case route of
-        Home ->
+        TemplateList ->
             let
-                ( pageModel, pageCmd, outMsg ) =
-                    Home.init
+                ( pageModel, pageCmd ) =
+                    Templates.init
 
                 newModel =
-                    { model | page = HomePage pageModel }
+                    { model | page = TemplateListPage pageModel }
+            in
+            ( newModel, Cmd.map TemplatesMsg pageCmd )
+
+        TemplateEditor uuid ->
+            let
+                ( pageModel, pageCmd, outMsg ) =
+                    Home.init uuid
+
+                newModel =
+                    { model | page = TemplateEditorPage pageModel }
             in
             handleHomeOutMsg outMsg newModel pageCmd
 
@@ -208,6 +237,21 @@ handleHomeOutMsg outMsg model pageCmd =
             )
 
 
+handleTemplatesOutMsg : Templates.OutMsg -> Model -> Cmd Templates.Msg -> ( Model, Cmd Msg )
+handleTemplatesOutMsg outMsg model pageCmd =
+    case outMsg of
+        TemplatesTypes.NoOutMsg ->
+            ( model, Cmd.map TemplatesMsg pageCmd )
+
+        TemplatesTypes.NavigateTo url ->
+            ( model
+            , Cmd.batch
+                [ Cmd.map TemplatesMsg pageCmd
+                , Nav.pushUrl model.key url
+                ]
+            )
+
+
 
 -- SUBSCRIPTIONS
 
@@ -239,7 +283,10 @@ view model =
 viewPage : Model -> Html Msg
 viewPage model =
     case model.page of
-        HomePage pageModel ->
+        TemplateListPage pageModel ->
+            Html.map TemplatesMsg (Templates.view pageModel)
+
+        TemplateEditorPage pageModel ->
             Html.map HomeMsg (Home.view pageModel)
 
         NotFoundPage ->

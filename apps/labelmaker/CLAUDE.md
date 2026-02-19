@@ -2,7 +2,7 @@
 
 LabelMaker is a **general-purpose label canvas editor** using **CQRS + Event Sourcing**. All writes go through an append-only event table; projection tables are rebuilt from events.
 
-Currently v1: a live SVG canvas editor with composable label objects and auto-sizing text. No persistence or printing yet.
+Supports **multiple label templates** — a list page to create/select/delete templates, and an editor page per template. Every modification is persisted as an event; state survives page refresh.
 
 ## Three-Schema Architecture
 
@@ -23,11 +23,31 @@ labelmaker_api    — External interface: read views + RPC write functions (expo
 - **`labelmaker_data.event`**: Append-only event store (id BIGSERIAL, type TEXT, payload JSONB, created_at TIMESTAMPTZ)
 
 **Logic schema (idempotent — `labelmaker_logic`):**
-- **`labelmaker_logic.apply_event()`**: CASE dispatcher (currently empty — no event types yet)
-- **`labelmaker_logic.replay_all_events()`**: Truncates projections and rebuilds from events
+- **`labelmaker_logic.template`**: Projection table (id UUID, name, label_type_id, label_width, label_height, corner_radius, rotate, padding, content JSONB, next_id, sample_values JSONB, created_at, deleted)
+- **8 handler functions**: `apply_template_created`, `apply_template_deleted`, `apply_template_name_set`, `apply_template_label_type_set`, `apply_template_height_set`, `apply_template_padding_set`, `apply_template_content_set`, `apply_template_sample_value_set`
+- **`labelmaker_logic.apply_event()`**: CASE dispatcher to 8 handler functions
+- **`labelmaker_logic.replay_all_events()`**: Truncates template table and rebuilds from events
 
 **API schema (idempotent — `labelmaker_api`):**
-- **`labelmaker_api.event`**: View exposing the event store
+- **`labelmaker_api.event`**: View exposing the event store (supports INSERT for writes)
+- **`labelmaker_api.template_list`**: Summary view for list page (id, name, label_type_id, created_at; excludes deleted)
+- **`labelmaker_api.template_detail`**: Full state view for editor (all fields; excludes deleted)
+- **`labelmaker_api.create_template(p_name)`**: RPC function that generates UUID, inserts `template_created` event, returns `template_id`
+
+## Event Types (8)
+
+| Event | Payload |
+|---|---|
+| `template_created` | `{ template_id, name }` |
+| `template_deleted` | `{ template_id }` |
+| `template_name_set` | `{ template_id, name }` |
+| `template_label_type_set` | `{ template_id, label_type_id, label_width, label_height, corner_radius, rotate }` |
+| `template_height_set` | `{ template_id, label_height }` |
+| `template_padding_set` | `{ template_id, padding }` |
+| `template_content_set` | `{ template_id, content: [...full tree...], next_id }` |
+| `template_sample_value_set` | `{ template_id, variable_name, value }` |
+
+Content events store the **full object tree** (not deltas). Server generates template UUIDs via `gen_random_uuid()` in the `create_template` RPC function.
 
 ## Database File Structure
 
@@ -53,40 +73,64 @@ Schema changes are **auto-applied on every `docker compose up`** by the `labelma
 
 ## Elm Client Structure
 
-SPA using `Browser.application` with a composable label object editor:
+SPA using `Browser.application` with multi-page routing and event-sourced persistence:
 
 ```
 apps/labelmaker/client/src/
 ├── Main.elm              # Entry point, routing, port subscriptions, OutMsg handling
-├── Route.elm             # Route type: Home | NotFound
+├── Route.elm             # Route type: TemplateList | TemplateEditor String | NotFound
 ├── Types.elm             # Shared types (RemoteData, Notification)
 ├── Ports.elm             # Port module: text measurement (requestTextMeasure/receiveTextMeasureResult)
-├── Api.elm               # HTTP functions (placeholder)
+├── Api.elm               # HTTP functions (fetchTemplateList, fetchTemplateDetail, createTemplate, emitEvent, deleteTemplate)
 ├── Api/
-│   ├── Decoders.elm      # JSON decoders (placeholder)
-│   └── Encoders.elm      # JSON encoders (placeholder)
+│   ├── Decoders.elm      # JSON decoders (TemplateSummary, TemplateDetail, labelObjectDecoder, etc.)
+│   └── Encoders.elm      # JSON encoders (encodeEvent, encodeLabelObject, etc.)
 ├── Components.elm        # Header, notification, loading
 ├── Data/
 │   ├── LabelObject.elm   # Label object types, tree operations, constructors
 │   └── LabelTypes.elm    # Brother QL label specs (25 types, copied from FrostByte)
 ├── main.js               # Elm init + text measurement JS handler (Canvas API)
 └── Page/
-    ├── Home.elm          # Facade: Model, Msg, OutMsg, init, update, view
+    ├── Templates.elm     # Facade: template list page (create, delete, navigate)
+    ├── Templates/
+    │   ├── Types.elm     # Model (RemoteData list), Msg, OutMsg (NavigateTo)
+    │   └── View.elm      # Card grid with create/delete buttons
+    ├── Home.elm          # Facade: template editor page (init takes templateId, withEvent persistence)
     ├── Home/
-    │   ├── Types.elm     # Designer model, msgs, OutMsg, measurement collection
-    │   └── View.elm      # Two-column layout: SVG preview + editor controls
+    │   ├── Types.elm     # Editor model (templateId, templateName, label settings, content tree), msgs, OutMsg
+    │   └── View.elm      # Two-column layout: SVG preview + editor controls, back link, name input
     ├── NotFound.elm      # Facade
     └── NotFound/
         └── View.elm      # 404 page
 ```
 
-**Architecture pattern:** Same as FrostByte — each page exposes Model, Msg, OutMsg, init, update, view. Pages communicate up via OutMsg. Home page `init` returns a 3-tuple `(Model, Cmd Msg, OutMsg)` to trigger initial text measurements.
+**Architecture pattern:** Same as FrostByte — each page exposes Model, Msg, OutMsg, init, update, view. Pages communicate up via OutMsg.
 
-**Routes:** `/` (Home — label designer)
+**Routes:**
+- `/` — Template list (create, select, delete templates)
+- `/template/<uuid>` — Template editor (label canvas with persistence)
 
 **Styling:** Tailwind CSS with custom "label" color palette (warm brown tones)
 
 **Served on:** Port `:8080` via Caddy
+
+### Persistence Pattern (withEvent)
+
+Every state-modifying handler in `Page/Home.elm` pipes through `withEvent` which batches an HTTP POST to `/api/db/event` alongside the normal Cmd:
+
+```elm
+withEvent : String -> Encode.Value -> ( Model, Cmd Msg, OutMsg ) -> ( Model, Cmd Msg, OutMsg )
+```
+
+- All payloads include `template_id` to scope events to the current template
+- Content changes (`AddObject`, `RemoveObject`, `UpdateObjectProperty`) use `withContentEvent` which sends the full object tree
+- Ephemeral state (`SelectObject`, `GotTextMeasureResult`, `EventEmitted`) is NOT persisted
+
+### Template Editor Init Flow
+
+1. `Home.init templateId` creates model with defaults, fires `fetchTemplateDetail`
+2. `GotTemplateDetail (Ok (Just detail))` applies fetched state via `applyTemplateDetail`, triggers text measurements
+3. `GotTemplateDetail (Ok Nothing)` — template not found (deleted or invalid UUID)
 
 ## Composable Label Object System
 
@@ -106,7 +150,7 @@ type LabelObject
 - Positioning is only done via Container (wrap an object in a Container with x, y, width, height)
 - Multiple objects at the same level overlap (z-ordered by list position)
 - Shapes fill the container: Rectangle = full area, Circle = inscribed, Line = diagonal
-- Each object has an `id : ObjectId` for selection, measurement tracking, and future persistence
+- Each object has an `id : ObjectId` for selection, measurement tracking, and persistence
 
 **Supporting types:**
 - `Color { r, g, b, a }` — RGBA color
@@ -117,12 +161,16 @@ type LabelObject
 
 **Constructors:** `newText`, `newVariable`, `newContainer`, `newShape`, `newImage` — all take a `nextId : Int` parameter
 
-## Label Canvas Editor (Home Page)
+**JSON serialization:** Objects are serialized with a `"type"` discriminator field (`"container"`, `"text"`, `"variable"`, `"image"`, `"shape"`). Container's `content` uses `Decode.lazy` for recursive decoding.
 
-The Home page is a live label canvas editor with composable objects and auto-sizing text.
+## Label Canvas Editor (Template Editor Page)
+
+The editor page (`/template/<uuid>`) is a live label canvas editor with composable objects and auto-sizing text. All changes are persisted as events.
 
 ### Model
 
+- `templateId` — UUID of the template being edited
+- `templateName` — Editable template name (persisted via `template_name_set` event)
 - `labelTypeId` — Selected Brother QL label type (default: `"62"` = 62mm endless)
 - `labelWidth`, `labelHeight` — Label dimensions in pixels (from `Data.LabelTypes`)
 - `cornerRadius` — For round labels (width/2), 0 otherwise
@@ -146,6 +194,10 @@ The Home page is a live label canvas editor with composable objects and auto-siz
 
 ### View Layout
 
+**Top — Template header:**
+- Back link to template list (`/`)
+- Editable template name input
+
 **Left column — SVG preview:**
 - White rectangle at label dimensions (swapped if `rotate=True`)
 - Recursive rendering of object tree (`renderObject`)
@@ -167,13 +219,18 @@ The Home page is a live label canvas editor with composable objects and auto-siz
 
 ### Messages
 
-- `SelectObject (Maybe ObjectId)` — Select/deselect an object
-- `AddObject LabelObject` — Add object to root or inside selected container
-- `RemoveObject ObjectId` — Remove object from tree
-- `UpdateObjectProperty ObjectId PropertyChange` — Apply a property change to an object
-- `UpdateSampleValue String String` — Set sample value for a variable name
-- `LabelTypeChanged`, `HeightChanged`, `PaddingChanged` — Label-level settings
-- `GotTextMeasureResult` — Receive measurement result from JS
+- `SelectObject (Maybe ObjectId)` — Select/deselect an object (ephemeral)
+- `AddObject LabelObject` — Add object to root or inside selected container → `template_content_set`
+- `RemoveObject ObjectId` — Remove object from tree → `template_content_set`
+- `UpdateObjectProperty ObjectId PropertyChange` — Apply a property change → `template_content_set`
+- `UpdateSampleValue String String` — Set sample value for a variable name → `template_sample_value_set`
+- `LabelTypeChanged` → `template_label_type_set`
+- `HeightChanged` → `template_height_set`
+- `PaddingChanged` → `template_padding_set`
+- `TemplateNameChanged` → `template_name_set`
+- `GotTextMeasureResult` — Receive measurement result from JS (ephemeral)
+- `GotTemplateDetail` — Receive template state from API on init
+- `EventEmitted` — No-op acknowledgement of event POST
 
 ### Label Type Selection Logic
 
@@ -220,7 +277,11 @@ docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm install -g el
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/db/event` | GET | Event store |
+| `/api/db/template_list` | GET | List all templates (summary, excludes deleted) |
+| `/api/db/template_detail?id=eq.<uuid>` | GET | Full template state for editor |
+| `/api/db/rpc/create_template` | POST | Create template (body: `{"p_name":"..."}`, returns `[{"template_id":"uuid"}]`) |
+| `/api/db/event` | POST | Insert event (body: `{"type":"...","payload":{...}}`) |
+| `/api/db/event` | GET | Event store (for backup) |
 | `/api/printer/print` | POST | Print PNG label |
 | `/api/printer/health` | GET | Printer service health check |
 

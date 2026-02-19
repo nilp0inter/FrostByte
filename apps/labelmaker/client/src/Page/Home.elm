@@ -1,9 +1,12 @@
 module Page.Home exposing (Model, Msg, OutMsg, init, update, view)
 
+import Api
+import Api.Encoders as Encoders
 import Data.LabelObject as LO exposing (LabelObject(..), ObjectId)
 import Data.LabelTypes exposing (LabelTypeSpec, labelTypes, silverRatioHeight)
 import Dict
 import Html exposing (Html)
+import Json.Encode as Encode
 import Page.Home.Types as Types exposing (PropertyChange(..))
 import Page.Home.View as View
 import Ports
@@ -21,18 +24,30 @@ type alias OutMsg =
     Types.OutMsg
 
 
-init : ( Model, Cmd Msg, OutMsg )
-init =
-    let
-        model =
-            Types.initialModel
-    in
-    ( model, Cmd.none, Types.requestAllMeasurements model )
+init : String -> ( Model, Cmd Msg, OutMsg )
+init templateId =
+    ( Types.initialModel templateId
+    , Api.fetchTemplateDetail templateId Types.GotTemplateDetail
+    , Types.NoOutMsg
+    )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg, OutMsg )
 update msg model =
     case msg of
+        Types.GotTemplateDetail (Ok (Just detail)) ->
+            let
+                newModel =
+                    Types.applyTemplateDetail detail model
+            in
+            ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
+
+        Types.GotTemplateDetail (Ok Nothing) ->
+            ( model, Cmd.none, Types.NoOutMsg )
+
+        Types.GotTemplateDetail (Err _) ->
+            ( model, Cmd.none, Types.NoOutMsg )
+
         Types.LabelTypeChanged newId ->
             let
                 maybeSpec =
@@ -65,6 +80,16 @@ update msg model =
                             model
             in
             ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
+                |> withEvent "template_label_type_set"
+                    (Encode.object
+                        [ ( "template_id", Encode.string model.templateId )
+                        , ( "label_type_id", Encode.string newModel.labelTypeId )
+                        , ( "label_width", Encode.int newModel.labelWidth )
+                        , ( "label_height", Encode.int newModel.labelHeight )
+                        , ( "corner_radius", Encode.int newModel.cornerRadius )
+                        , ( "rotate", Encode.bool newModel.rotate )
+                        ]
+                    )
 
         Types.HeightChanged str ->
             case String.toInt str of
@@ -74,6 +99,12 @@ update msg model =
                             { model | labelHeight = h, computedTexts = Dict.empty }
                     in
                     ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
+                        |> withEvent "template_height_set"
+                            (Encode.object
+                                [ ( "template_id", Encode.string model.templateId )
+                                , ( "label_height", Encode.int h )
+                                ]
+                            )
 
                 Nothing ->
                     ( model, Cmd.none, Types.NoOutMsg )
@@ -86,6 +117,12 @@ update msg model =
                             { model | padding = p, computedTexts = Dict.empty }
                     in
                     ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
+                        |> withEvent "template_padding_set"
+                            (Encode.object
+                                [ ( "template_id", Encode.string model.templateId )
+                                , ( "padding", Encode.int p )
+                                ]
+                            )
 
                 Nothing ->
                     ( model, Cmd.none, Types.NoOutMsg )
@@ -116,6 +153,7 @@ update msg model =
                     }
             in
             ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
+                |> withContentEvent newModel
 
         Types.RemoveObject targetId ->
             let
@@ -132,6 +170,7 @@ update msg model =
                     }
             in
             ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
+                |> withContentEvent newModel
 
         Types.UpdateObjectProperty targetId change ->
             let
@@ -178,11 +217,13 @@ update msg model =
                                 model.computedTexts
                     }
             in
-            if needsRemeasure then
+            (if needsRemeasure then
                 ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
 
-            else
+             else
                 ( newModel, Cmd.none, Types.NoOutMsg )
+            )
+                |> withContentEvent newModel
 
         Types.UpdateSampleValue varName val ->
             let
@@ -193,6 +234,26 @@ update msg model =
                     }
             in
             ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
+                |> withEvent "template_sample_value_set"
+                    (Encode.object
+                        [ ( "template_id", Encode.string model.templateId )
+                        , ( "variable_name", Encode.string varName )
+                        , ( "value", Encode.string val )
+                        ]
+                    )
+
+        Types.TemplateNameChanged name ->
+            let
+                newModel =
+                    { model | templateName = name }
+            in
+            ( newModel, Cmd.none, Types.NoOutMsg )
+                |> withEvent "template_name_set"
+                    (Encode.object
+                        [ ( "template_id", Encode.string model.templateId )
+                        , ( "name", Encode.string name )
+                        ]
+                    )
 
         Types.GotTextMeasureResult result ->
             ( { model
@@ -206,6 +267,29 @@ update msg model =
             , Cmd.none
             , Types.NoOutMsg
             )
+
+        Types.EventEmitted _ ->
+            ( model, Cmd.none, Types.NoOutMsg )
+
+
+withEvent : String -> Encode.Value -> ( Model, Cmd Msg, OutMsg ) -> ( Model, Cmd Msg, OutMsg )
+withEvent eventType payload ( model, cmd, outMsg ) =
+    ( model
+    , Cmd.batch [ cmd, Api.emitEvent eventType payload Types.EventEmitted ]
+    , outMsg
+    )
+
+
+withContentEvent : Model -> ( Model, Cmd Msg, OutMsg ) -> ( Model, Cmd Msg, OutMsg )
+withContentEvent newModel tuple =
+    withEvent "template_content_set"
+        (Encode.object
+            [ ( "template_id", Encode.string newModel.templateId )
+            , ( "content", Encoders.encodeLabelObjectList newModel.content )
+            , ( "next_id", Encode.int newModel.nextId )
+            ]
+        )
+        tuple
 
 
 applyPropertyChange : PropertyChange -> LabelObject -> LabelObject

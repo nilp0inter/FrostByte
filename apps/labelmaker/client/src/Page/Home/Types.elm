@@ -4,13 +4,16 @@ module Page.Home.Types exposing
     , Msg(..)
     , OutMsg(..)
     , PropertyChange(..)
+    , applyTemplateDetail
     , initialModel
     , requestAllMeasurements
     )
 
+import Api.Decoders exposing (TemplateDetail)
 import Data.LabelObject as LO exposing (LabelObject(..), ObjectId)
 import Data.LabelTypes exposing (LabelTypeSpec, labelTypes, silverRatioHeight)
 import Dict exposing (Dict)
+import Http
 import Ports
 
 
@@ -21,7 +24,9 @@ type alias ComputedText =
 
 
 type alias Model =
-    { labelTypeId : String
+    { templateId : String
+    , templateName : String
+    , labelTypeId : String
     , labelWidth : Int
     , labelHeight : Int
     , cornerRadius : Int
@@ -45,6 +50,9 @@ type Msg
     | UpdateObjectProperty ObjectId PropertyChange
     | UpdateSampleValue String String
     | GotTextMeasureResult Ports.TextMeasureResult
+    | GotTemplateDetail (Result Http.Error (Maybe TemplateDetail))
+    | TemplateNameChanged String
+    | EventEmitted (Result Http.Error ())
 
 
 type PropertyChange
@@ -68,8 +76,8 @@ type OutMsg
     | RequestTextMeasures (List Ports.TextMeasureRequest)
 
 
-initialModel : Model
-initialModel =
+initialModel : String -> Model
+initialModel templateId =
     let
         defaultWidth =
             696
@@ -84,7 +92,9 @@ initialModel =
                 , properties = LO.defaultTextProperties
                 }
     in
-    { labelTypeId = "62"
+    { templateId = templateId
+    , templateName = "Cargando..."
+    , labelTypeId = "62"
     , labelWidth = defaultWidth
     , labelHeight = defaultHeight
     , cornerRadius = 0
@@ -95,6 +105,23 @@ initialModel =
     , computedTexts = Dict.empty
     , nextId = 2
     , padding = 20
+    }
+
+
+applyTemplateDetail : TemplateDetail -> Model -> Model
+applyTemplateDetail detail model =
+    { model
+        | templateName = detail.name
+        , labelTypeId = detail.labelTypeId
+        , labelWidth = detail.labelWidth
+        , labelHeight = detail.labelHeight
+        , cornerRadius = detail.cornerRadius
+        , rotate = detail.rotate
+        , padding = detail.padding
+        , content = detail.content
+        , nextId = detail.nextId
+        , sampleValues = detail.sampleValues
+        , computedTexts = Dict.empty
     }
 
 
