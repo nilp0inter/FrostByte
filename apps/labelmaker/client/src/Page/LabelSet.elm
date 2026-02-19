@@ -1,12 +1,14 @@
 module Page.LabelSet exposing (Model, Msg, OutMsg, init, update, view)
 
 import Api
+import Browser.Dom
 import Data.LabelObject as LO
 import Dict
 import Html exposing (Html)
 import Page.LabelSet.Types as Types
 import Page.LabelSet.View as View
 import Ports
+import Task
 import Types exposing (Committable(..), NotificationType(..), getValue)
 
 
@@ -67,6 +69,8 @@ update msg model =
                     { model
                         | selectedRowIndex = rowIndex
                         , computedTexts = Dict.empty
+                        , focusedCell = Nothing
+                        , cellMode = Types.Navigating
                     }
             in
             ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
@@ -129,7 +133,7 @@ update msg model =
                     currentRows ++ [ emptyRow ]
 
                 newModel =
-                    { model | rows = Clean newRows }
+                    { model | rows = Clean newRows, focusedCell = Nothing }
             in
             ( newModel
             , emitRowsSet model.labelsetId newRows
@@ -169,6 +173,7 @@ update msg model =
                     { model
                         | rows = Clean newRows
                         , selectedRowIndex = newSelectedIndex
+                        , focusedCell = Nothing
                         , computedTexts =
                             if needsRemeasure then
                                 Dict.empty
@@ -338,10 +343,300 @@ update msg model =
         Types.EventEmitted _ ->
             ( model, Cmd.none, Types.NoOutMsg )
 
+        Types.CellClicked rowIndex colIndex ->
+            if model.focusedCell == Just ( rowIndex, colIndex ) && model.cellMode == Types.Navigating then
+                ( { model | cellMode = Types.Editing }
+                , focusCell rowIndex colIndex
+                , Types.NoOutMsg
+                )
+
+            else if model.focusedCell == Just ( rowIndex, colIndex ) then
+                ( model, Cmd.none, Types.NoOutMsg )
+
+            else
+                let
+                    ( m1, cmd1 ) =
+                        commitIfDirty model
+
+                    needsRemeasure =
+                        rowIndex /= m1.selectedRowIndex
+
+                    newModel =
+                        { m1
+                            | focusedCell = Just ( rowIndex, colIndex )
+                            , cellMode = Types.Navigating
+                            , selectedRowIndex = rowIndex
+                            , computedTexts =
+                                if needsRemeasure then
+                                    Dict.empty
+
+                                else
+                                    m1.computedTexts
+                        }
+
+                    outMsg =
+                        if needsRemeasure then
+                            Types.requestAllMeasurements newModel
+
+                        else
+                            Types.NoOutMsg
+                in
+                ( newModel
+                , Cmd.batch [ cmd1, focusCell rowIndex colIndex ]
+                , outMsg
+                )
+
+        Types.CellKeyDown key ctrlKey shiftKey row col ->
+            let
+                rowCount =
+                    List.length (getValue model.rows)
+
+                colCount =
+                    List.length model.variableNames
+            in
+            case model.cellMode of
+                Types.Navigating ->
+                    case key of
+                        "ArrowUp" ->
+                            if row > 0 then
+                                moveToCell model (row - 1) col
+
+                            else
+                                ( model, Cmd.none, Types.NoOutMsg )
+
+                        "ArrowDown" ->
+                            if row < rowCount - 1 then
+                                moveToCell model (row + 1) col
+
+                            else
+                                ( model, Cmd.none, Types.NoOutMsg )
+
+                        "ArrowLeft" ->
+                            if col > 0 then
+                                moveToCell model row (col - 1)
+
+                            else
+                                ( model, Cmd.none, Types.NoOutMsg )
+
+                        "ArrowRight" ->
+                            if col < colCount - 1 then
+                                moveToCell model row (col + 1)
+
+                            else
+                                ( model, Cmd.none, Types.NoOutMsg )
+
+                        "Enter" ->
+                            ( { model | cellMode = Types.Editing }
+                            , focusCell row col
+                            , Types.NoOutMsg
+                            )
+
+                        "Tab" ->
+                            if shiftKey then
+                                if col > 0 then
+                                    moveToCell model row (col - 1)
+
+                                else if row > 0 then
+                                    moveToCell model (row - 1) (colCount - 1)
+
+                                else
+                                    ( model, Cmd.none, Types.NoOutMsg )
+
+                            else if col < colCount - 1 then
+                                moveToCell model row (col + 1)
+
+                            else if row < rowCount - 1 then
+                                moveToCell model (row + 1) 0
+
+                            else
+                                ( model, Cmd.none, Types.NoOutMsg )
+
+                        _ ->
+                            ( model, Cmd.none, Types.NoOutMsg )
+
+                Types.Editing ->
+                    case key of
+                        "Tab" ->
+                            let
+                                ( m1, cmd1 ) =
+                                    commitIfDirty model
+                            in
+                            if shiftKey then
+                                if col > 0 then
+                                    let
+                                        newModel =
+                                            { m1
+                                                | focusedCell = Just ( row, col - 1 )
+                                                , cellMode = Types.Editing
+                                            }
+                                    in
+                                    ( newModel
+                                    , Cmd.batch [ cmd1, focusCell row (col - 1) ]
+                                    , Types.NoOutMsg
+                                    )
+
+                                else if row > 0 then
+                                    let
+                                        newModel =
+                                            { m1
+                                                | focusedCell = Just ( row - 1, colCount - 1 )
+                                                , cellMode = Types.Editing
+                                                , selectedRowIndex = row - 1
+                                                , computedTexts = Dict.empty
+                                            }
+                                    in
+                                    ( newModel
+                                    , Cmd.batch [ cmd1, focusCell (row - 1) (colCount - 1) ]
+                                    , Types.requestAllMeasurements newModel
+                                    )
+
+                                else
+                                    ( m1, cmd1, Types.NoOutMsg )
+
+                            else if col < colCount - 1 then
+                                let
+                                    newModel =
+                                        { m1
+                                            | focusedCell = Just ( row, col + 1 )
+                                            , cellMode = Types.Editing
+                                        }
+                                in
+                                ( newModel
+                                , Cmd.batch [ cmd1, focusCell row (col + 1) ]
+                                , Types.NoOutMsg
+                                )
+
+                            else if row < rowCount - 1 then
+                                let
+                                    newModel =
+                                        { m1
+                                            | focusedCell = Just ( row + 1, 0 )
+                                            , cellMode = Types.Editing
+                                            , selectedRowIndex = row + 1
+                                            , computedTexts = Dict.empty
+                                        }
+                                in
+                                ( newModel
+                                , Cmd.batch [ cmd1, focusCell (row + 1) 0 ]
+                                , Types.requestAllMeasurements newModel
+                                )
+
+                            else
+                                ( m1, cmd1, Types.NoOutMsg )
+
+                        "Enter" ->
+                            if ctrlKey then
+                                let
+                                    currentRows =
+                                        getValue model.rows
+
+                                    emptyRow =
+                                        List.foldl (\varName dict -> Dict.insert varName "" dict) Dict.empty model.variableNames
+
+                                    newRows =
+                                        List.take (row + 1) currentRows ++ [ emptyRow ] ++ List.drop (row + 1) currentRows
+
+                                    newModel =
+                                        { model
+                                            | rows = Clean newRows
+                                            , focusedCell = Just ( row + 1, 0 )
+                                            , cellMode = Types.Editing
+                                            , selectedRowIndex = row + 1
+                                            , computedTexts = Dict.empty
+                                        }
+                                in
+                                ( newModel
+                                , Cmd.batch [ emitRowsSet model.labelsetId newRows, focusCell (row + 1) 0 ]
+                                , Types.requestAllMeasurements newModel
+                                )
+
+                            else
+                                ( model, Cmd.none, Types.NoOutMsg )
+
+                        "Escape" ->
+                            let
+                                ( m1, cmd1 ) =
+                                    commitIfDirty model
+
+                                newModel =
+                                    { m1 | cellMode = Types.Navigating }
+                            in
+                            ( newModel
+                            , Cmd.batch [ cmd1, focusCell row col ]
+                            , Types.NoOutMsg
+                            )
+
+                        _ ->
+                            ( model, Cmd.none, Types.NoOutMsg )
+
+        Types.CellBlurred blurredRow blurredCol ->
+            let
+                ( m1, cmd1 ) =
+                    commitIfDirty model
+            in
+            if model.focusedCell == Just ( blurredRow, blurredCol ) then
+                ( { m1 | cellMode = Types.Navigating }
+                , cmd1
+                , Types.NoOutMsg
+                )
+
+            else
+                ( m1, cmd1, Types.NoOutMsg )
+
+        Types.FocusResult _ ->
+            ( model, Cmd.none, Types.NoOutMsg )
+
 
 emitRowsSet : String -> List (Dict.Dict String String) -> Cmd Msg
 emitRowsSet labelsetId rows =
     Api.setLabelsetRows labelsetId rows Types.EventEmitted
+
+
+focusCell : Int -> Int -> Cmd Msg
+focusCell row col =
+    Browser.Dom.focus (Types.cellId row col)
+        |> Task.attempt Types.FocusResult
+
+
+commitIfDirty : Model -> ( Model, Cmd Msg )
+commitIfDirty model =
+    case model.rows of
+        Dirty currentRows ->
+            ( { model | rows = Clean currentRows }
+            , emitRowsSet model.labelsetId currentRows
+            )
+
+        Clean _ ->
+            ( model, Cmd.none )
+
+
+moveToCell : Model -> Int -> Int -> ( Model, Cmd Msg, Types.OutMsg )
+moveToCell model row col =
+    let
+        needsRemeasure =
+            row /= model.selectedRowIndex
+
+        newModel =
+            { model
+                | focusedCell = Just ( row, col )
+                , selectedRowIndex = row
+                , cellMode = Types.Navigating
+                , computedTexts =
+                    if needsRemeasure then
+                        Dict.empty
+
+                    else
+                        model.computedTexts
+            }
+
+        outMsg =
+            if needsRemeasure then
+                Types.requestAllMeasurements newModel
+
+            else
+                Types.NoOutMsg
+    in
+    ( newModel, focusCell row col, outMsg )
 
 
 view : Model -> Html Msg

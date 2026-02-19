@@ -3,9 +3,10 @@ module Page.LabelSet.View exposing (view)
 import Data.LabelObject as LO exposing (LabelObject(..), ObjectId, ShapeType(..))
 import Dict
 import Html exposing (..)
-import Html.Attributes exposing (class, disabled, href, id, type_, value)
-import Html.Events exposing (onBlur, onClick, onInput)
-import Page.LabelSet.Types exposing (ComputedText, Model, Msg(..), selectedRowValues)
+import Html.Attributes exposing (class, disabled, href, id, readonly, type_, value)
+import Html.Events exposing (onBlur, onClick, onInput, preventDefaultOn)
+import Json.Decode
+import Page.LabelSet.Types exposing (CellMode(..), ComputedText, Model, Msg(..), cellId, selectedRowValues)
 import Svg exposing (svg)
 import Svg.Attributes as SA
 import Types exposing (getValue)
@@ -29,7 +30,7 @@ viewHeader model =
             [ href "/sets"
             , class "text-label-600 hover:text-label-800 transition-colors"
             ]
-            [ text "\u{2190} Conjuntos" ]
+            [ text "\u{2190} Colecciones" ]
         , input
             [ type_ "text"
             , class "text-xl font-bold text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-label-500 focus:outline-none px-1"
@@ -330,15 +331,38 @@ viewRow model rowIndex rowValues =
             , onClick (SelectRow rowIndex)
             ]
             [ text (String.fromInt (rowIndex + 1)) ]
-            :: List.map
-                (\varName ->
+            :: List.indexedMap
+                (\colIndex varName ->
+                    let
+                        isFocused =
+                            model.focusedCell == Just ( rowIndex, colIndex )
+
+                        isEditing =
+                            isFocused && model.cellMode == Editing
+
+                        ringClass =
+                            if isFocused then
+                                case model.cellMode of
+                                    Navigating ->
+                                        " ring-2 ring-blue-500"
+
+                                    Editing ->
+                                        " ring-2 ring-label-500"
+
+                            else
+                                ""
+                    in
                     td [ class "border border-gray-200 px-1 py-0" ]
                         [ input
                             [ type_ "text"
-                            , class "w-full px-1 py-1 text-sm border-none focus:outline-none focus:ring-1 focus:ring-label-500 bg-transparent"
+                            , id (cellId rowIndex colIndex)
+                            , class ("w-full px-1 py-1 text-sm border-none focus:outline-none bg-transparent" ++ ringClass)
                             , value (Dict.get varName rowValues |> Maybe.withDefault "")
+                            , readonly (not isEditing)
                             , onInput (UpdateCell rowIndex varName)
-                            , onBlur CommitRows
+                            , onBlur (CellBlurred rowIndex colIndex)
+                            , onClick (CellClicked rowIndex colIndex)
+                            , onCellKeyDown model.cellMode rowIndex colIndex
                             ]
                             []
                         ]
@@ -356,6 +380,29 @@ viewRow model rowIndex rowValues =
                         text ""
                     ]
                ]
+        )
+
+
+onCellKeyDown : CellMode -> Int -> Int -> Html.Attribute Msg
+onCellKeyDown mode rowIndex colIndex =
+    preventDefaultOn "keydown"
+        (Json.Decode.map3
+            (\key ctrl shift ->
+                let
+                    shouldPrevent =
+                        case mode of
+                            Navigating ->
+                                List.member key [ "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Tab", "Escape" ]
+
+                            Editing ->
+                                List.member key [ "Tab", "Escape" ]
+                                    || (key == "Enter" && ctrl)
+                in
+                ( CellKeyDown key ctrl shift rowIndex colIndex, shouldPrevent )
+            )
+            (Json.Decode.field "key" Json.Decode.string)
+            (Json.Decode.field "ctrlKey" Json.Decode.bool)
+            (Json.Decode.field "shiftKey" Json.Decode.bool)
         )
 
 

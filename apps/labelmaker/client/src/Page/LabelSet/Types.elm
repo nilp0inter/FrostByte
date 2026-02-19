@@ -1,9 +1,11 @@
 module Page.LabelSet.Types exposing
-    ( ComputedText
+    ( CellMode(..)
+    , ComputedText
     , Model
     , Msg(..)
     , OutMsg(..)
     , PrintProgress
+    , cellId
     , collectMeasurements
     , initialModel
     , requestAllMeasurements
@@ -11,11 +13,17 @@ module Page.LabelSet.Types exposing
     )
 
 import Api.Decoders exposing (LabelSetDetail)
+import Browser.Dom
 import Data.LabelObject as LO exposing (LabelObject(..), ObjectId)
 import Dict exposing (Dict)
 import Http
 import Ports
 import Types exposing (Committable(..), NotificationType, getValue)
+
+
+type CellMode
+    = Navigating
+    | Editing
 
 
 type alias ComputedText =
@@ -50,6 +58,8 @@ type alias Model =
     , printingAll : Bool
     , printProgress : Maybe PrintProgress
     , printQueue : List Int
+    , focusedCell : Maybe ( Int, Int )
+    , cellMode : CellMode
     }
 
 
@@ -68,6 +78,10 @@ type Msg
     | GotPngResult Ports.PngResult
     | GotPrintResult (Result Http.Error ())
     | EventEmitted (Result Http.Error ())
+    | CellClicked Int Int
+    | CellKeyDown String Bool Bool Int Int
+    | CellBlurred Int Int
+    | FocusResult (Result Browser.Dom.Error ())
 
 
 type OutMsg
@@ -98,7 +112,14 @@ initialModel labelsetId =
     , printingAll = False
     , printProgress = Nothing
     , printQueue = []
+    , focusedCell = Nothing
+    , cellMode = Navigating
     }
+
+
+cellId : Int -> Int -> String
+cellId row col =
+    "cell-" ++ String.fromInt row ++ "-" ++ String.fromInt col
 
 
 selectedRowValues : Model -> Dict String String

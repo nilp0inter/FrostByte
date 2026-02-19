@@ -13,7 +13,7 @@ view : Model -> Html Msg
 view model =
     div []
         [ div [ class "flex items-center justify-between mb-6" ]
-            [ h1 [ class "text-2xl font-bold text-gray-800" ] [ text "Conjuntos" ]
+            [ h1 [ class "text-2xl font-bold text-gray-800" ] [ text "Colecciones" ]
             , viewCreateControls model
             ]
         , viewBody model
@@ -47,7 +47,7 @@ viewCreateControls model =
                     , input
                         [ type_ "text"
                         , class "border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-label-500 focus:border-label-500"
-                        , placeholder "Nombre del conjunto..."
+                        , placeholder "Nombre de la colección..."
                         , value model.newName
                         , onInput UpdateNewName
                         ]
@@ -57,7 +57,7 @@ viewCreateControls model =
                         , onClick CreateLabelSet
                         , disabled (model.selectedTemplateId == Nothing || String.isEmpty (String.trim model.newName))
                         ]
-                        [ text "+ Crear conjunto" ]
+                        [ text "+ Crear colección" ]
                     ]
 
         _ ->
@@ -87,8 +87,8 @@ viewBody model =
 viewEmpty : Html Msg
 viewEmpty =
     div [ class "text-center py-16" ]
-        [ p [ class "text-gray-400 text-lg mb-4" ] [ text "No hay conjuntos" ]
-        , p [ class "text-gray-400 text-sm" ] [ text "Selecciona una plantilla arriba para crear un conjunto de etiquetas" ]
+        [ p [ class "text-gray-400 text-lg mb-4" ] [ text "No hay colecciones" ]
+        , p [ class "text-gray-400 text-sm" ] [ text "Selecciona una plantilla arriba para crear una colección de etiquetas" ]
         ]
 
 
