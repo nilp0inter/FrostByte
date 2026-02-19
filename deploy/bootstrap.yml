@@ -10,10 +10,24 @@
         name:
           - docker.io
           - docker-compose-plugin
-          - sops
           - git
         state: present
         update_cache: true
+
+    - name: Check if sops is installed
+      ansible.builtin.command:
+        cmd: sops --version
+      register: sops_check
+      changed_when: false
+      failed_when: false
+
+    - name: Install sops from GitHub releases
+      become: true
+      ansible.builtin.get_url:
+        url: https://github.com/getsops/sops/releases/download/v3.11.0/sops-v3.11.0.linux.arm64
+        dest: /usr/local/bin/sops
+        mode: "0755"
+      when: sops_check.rc != 0
 
     - name: Add user to docker group
       become: true

@@ -14,6 +14,7 @@ tasks:
   restore:
     desc: Restore event data from CSV backup
     dir: deploy
-    cmd: ansible-playbook restore.yml -e backup_path={{.BACKUP}}
-    requires:
-      vars: [BACKUP]
+    cmd: >-
+      ansible-playbook restore.yml
+      {{if .FROSTBYTE_CSV}}-e frostbyte_csv={{.FROSTBYTE_CSV}}{{end}}
+      {{if .LABELMAKER_CSV}}-e labelmaker_csv={{.LABELMAKER_CSV}}{{end}}

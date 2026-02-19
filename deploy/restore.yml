@@ -4,45 +4,39 @@
   gather_facts: false
 
   vars:
-    backup_path: ""
+    frostbyte_csv: ""
+    labelmaker_csv: ""
 
   tasks:
-    - name: Validate backup_path is set
+    - name: Validate at least one CSV is provided
       ansible.builtin.assert:
-        that: backup_path | length > 0
-        fail_msg: "backup_path is required. Usage: task restore BACKUP=/path/to/backup/data/json"
+        that: (frostbyte_csv | length > 0) or (labelmaker_csv | length > 0)
+        fail_msg: "At least one CSV is required. Usage: task restore FROSTBYTE_CSV=/path/to/file [LABELMAKER_CSV=/path/to/file]"
 
     - name: Copy FrostByte events CSV to Pi
       ansible.builtin.copy:
-        src: "{{ backup_path }}/frostbyte_events.csv"
+        src: "{{ frostbyte_csv }}"
         dest: /tmp/frostbyte_events.csv
         mode: "0644"
-      register: frostbyte_csv
-      ignore_errors: true
+      when: frostbyte_csv | length > 0
 
     - name: Copy LabelMaker events CSV to Pi
       ansible.builtin.copy:
-        src: "{{ backup_path }}/labelmaker_events.csv"
+        src: "{{ labelmaker_csv }}"
         dest: /tmp/labelmaker_events.csv
         mode: "0644"
-      register: labelmaker_csv
-      ignore_errors: true
-
-    - name: Fail if no CSV files found
-      ansible.builtin.assert:
-        that: frostbyte_csv is succeeded or labelmaker_csv is succeeded
-        fail_msg: "No event CSV files found in {{ backup_path }}"
+      when: labelmaker_csv | length > 0
 
     - name: Restore FrostByte events
       ansible.builtin.command:
         cmd: "{{ repo_path }}/common/backup/event-restore.sh frostbyte /tmp/frostbyte_events.csv"
-      when: frostbyte_csv is succeeded
+      when: frostbyte_csv | length > 0
       changed_when: true
 
     - name: Restore LabelMaker events
       ansible.builtin.command:
         cmd: "{{ repo_path }}/common/backup/event-restore.sh labelmaker /tmp/labelmaker_events.csv"
-      when: labelmaker_csv is succeeded
+      when: labelmaker_csv | length > 0
       changed_when: true
 
     - name: Clean up temp files

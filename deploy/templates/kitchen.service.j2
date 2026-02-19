@@ -7,6 +7,7 @@ Requires=docker.service
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory={{ repo_path }}
+Environment=SOPS_AGE_KEY_FILE=/home/{{ ansible_user }}/.config/sops/age/keys.txt
 ExecStartPre=/usr/bin/bash -c 'sops -d .env.prod > /tmp/.env.decrypted'
 ExecStart=/usr/bin/docker compose --env-file /tmp/.env.decrypted -f docker-compose.yml -f docker-compose.secrets.yml -f docker-compose.prod.yml up -d --remove-orphans
 ExecStartPost=/usr/bin/rm -f /tmp/.env.decrypted
