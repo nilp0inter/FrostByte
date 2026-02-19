@@ -384,6 +384,18 @@ The labelset editor page (`/set/<uuid>`) displays a spreadsheet of rows where ea
 - `AddRow`/`DeleteRow` persist immediately (set `Clean`)
 - Labelset name editing is also deferred: `UpdateName` → `Dirty`, `CommitName` on blur
 
+### CSV Import/Export Mode
+
+Toggle between table and CSV textarea via the "CSV"/"Tabla" button next to the "Datos" heading. Uses `BrianHicks/elm-csv` for encode/decode.
+
+- **Model fields:** `csvMode : Bool`, `csvText : String`, `csvError : Maybe String`, `fieldSeparator : Char` (default `','`)
+- **Messages:** `ToggleCsvMode`, `UpdateCsvText String`, `UpdateFieldSeparator String`
+- **To CSV mode:** encodes current `rows` to `csvText`, clears cell focus
+- **To table mode:** commits dirty rows, switches back
+- **Live decode:** `UpdateCsvText` attempts decode on every keystroke; on success updates `rows` (as `Dirty`) and triggers SVG preview re-measurement; on failure shows error without touching rows
+- **Separator:** configurable single-char field separator; changing it re-encodes from current rows
+- **CSV helpers in `LabelSet.elm`:** `encodeCsv`, `decodeCsv`, `buildRowDecoder` (dynamic named-field decoder built via fold over `variableNames`)
+
 ### Print Flow (Single Row)
 
 Same as Label editor: `RequestPrint` → SVG-to-PNG → POST to printer

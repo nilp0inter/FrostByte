@@ -3,7 +3,7 @@ module Page.LabelSet.View exposing (view)
 import Data.LabelObject as LO exposing (LabelObject(..), ObjectId, ShapeType(..))
 import Dict
 import Html exposing (..)
-import Html.Attributes exposing (class, disabled, href, id, readonly, type_, value)
+import Html.Attributes exposing (class, disabled, href, id, maxlength, placeholder, readonly, style, type_, value)
 import Html.Events exposing (onBlur, onClick, onInput, preventDefaultOn)
 import Json.Decode
 import Page.LabelSet.Types exposing (CellMode(..), ComputedText, Model, Msg(..), cellId, selectedRowValues)
@@ -279,9 +279,36 @@ viewSpreadsheet model =
             getValue model.rows
     in
     div [ class "bg-white rounded-lg p-4 shadow-sm overflow-x-auto" ]
-        [ h3 [ class "text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3" ] [ text "Datos" ]
+        [ div [ class "flex items-center justify-between mb-3" ]
+            [ h3 [ class "text-sm font-semibold text-gray-700 uppercase tracking-wide" ] [ text "Datos" ]
+            , if not (List.isEmpty model.variableNames) then
+                button
+                    [ class
+                        (if model.csvMode then
+                            "px-3 py-1 text-xs font-medium rounded border transition-colors bg-label-100 text-label-700 border-label-300"
+
+                         else
+                            "px-3 py-1 text-xs font-medium rounded border transition-colors bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                        )
+                    , onClick ToggleCsvMode
+                    ]
+                    [ text
+                        (if model.csvMode then
+                            "Tabla"
+
+                         else
+                            "CSV"
+                        )
+                    ]
+
+              else
+                text ""
+            ]
         , if List.isEmpty model.variableNames then
             p [ class "text-sm text-gray-400 italic" ] [ text "Sin variables en la plantilla" ]
+
+          else if model.csvMode then
+            viewCsvEditor model
 
           else
             div []
@@ -306,6 +333,42 @@ viewSpreadsheet model =
                     ]
                     [ text "+ Agregar fila" ]
                 ]
+        ]
+
+
+viewCsvEditor : Model -> Html Msg
+viewCsvEditor model =
+    let
+        rowCount =
+            List.length (getValue model.rows)
+    in
+    div []
+        [ div [ class "flex items-center gap-2 mb-2" ]
+            [ label [ class "text-xs text-gray-500" ] [ text "Separador:" ]
+            , input
+                [ type_ "text"
+                , class "w-10 px-1 py-0.5 text-xs text-center border border-gray-300 rounded focus:border-label-500 focus:outline-none font-mono"
+                , value (String.fromChar model.fieldSeparator)
+                , maxlength 1
+                , onInput UpdateFieldSeparator
+                ]
+                []
+            ]
+        , textarea
+            [ class "w-full font-mono text-sm border border-gray-300 rounded p-2 focus:border-label-500 focus:outline-none resize-y"
+            , style "min-height" "200px"
+            , value model.csvText
+            , onInput UpdateCsvText
+            , placeholder "Pega datos CSV aquí..."
+            ]
+            []
+        , case model.csvError of
+            Just err ->
+                p [ class "mt-1 text-xs text-red-600 font-mono whitespace-pre-wrap" ] [ text err ]
+
+            Nothing ->
+                p [ class "mt-1 text-xs text-gray-400" ]
+                    [ text (String.fromInt rowCount ++ " fila(s)") ]
         ]
 
 

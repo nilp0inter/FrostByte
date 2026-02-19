@@ -2,8 +2,10 @@ module Page.LabelSet exposing (Model, Msg, OutMsg, init, update, view)
 
 import Api
 import Browser.Dom
+import Csv.Decode as CsvDecode
+import Csv.Encode as CsvEncode
 import Data.LabelObject as LO
-import Dict
+import Dict exposing (Dict)
 import Html exposing (Html)
 import Page.LabelSet.Types as Types
 import Page.LabelSet.View as View
@@ -583,6 +585,75 @@ update msg model =
             else
                 ( m1, cmd1, Types.NoOutMsg )
 
+        Types.ToggleCsvMode ->
+            if model.csvMode then
+                -- Switching to table mode
+                let
+                    ( m1, cmd1 ) =
+                        commitIfDirty model
+                in
+                ( { m1 | csvMode = False, csvError = Nothing }
+                , cmd1
+                , Types.NoOutMsg
+                )
+
+            else
+                -- Switching to CSV mode
+                let
+                    csvText =
+                        encodeCsv model.fieldSeparator model.variableNames (getValue model.rows)
+                in
+                ( { model
+                    | csvMode = True
+                    , csvText = csvText
+                    , csvError = Nothing
+                    , focusedCell = Nothing
+                    , cellMode = Types.Navigating
+                  }
+                , Cmd.none
+                , Types.NoOutMsg
+                )
+
+        Types.UpdateCsvText newText ->
+            case decodeCsv model.fieldSeparator model.variableNames newText of
+                Ok decodedRows ->
+                    let
+                        newSelectedIndex =
+                            Basics.min model.selectedRowIndex
+                                (Basics.max 0 (List.length decodedRows - 1))
+
+                        newModel =
+                            { model
+                                | csvText = newText
+                                , csvError = Nothing
+                                , rows = Dirty decodedRows
+                                , selectedRowIndex = newSelectedIndex
+                                , computedTexts = Dict.empty
+                            }
+                    in
+                    ( newModel, Cmd.none, Types.requestAllMeasurements newModel )
+
+                Err errorMsg ->
+                    ( { model | csvText = newText, csvError = Just errorMsg }
+                    , Cmd.none
+                    , Types.NoOutMsg
+                    )
+
+        Types.UpdateFieldSeparator sepStr ->
+            let
+                newSep =
+                    String.uncons sepStr
+                        |> Maybe.map Tuple.first
+                        |> Maybe.withDefault ','
+
+                csvText =
+                    encodeCsv newSep model.variableNames (getValue model.rows)
+            in
+            ( { model | fieldSeparator = newSep, csvText = csvText, csvError = Nothing }
+            , Cmd.none
+            , Types.NoOutMsg
+            )
+
         Types.FocusResult _ ->
             ( model, Cmd.none, Types.NoOutMsg )
 
@@ -637,6 +708,51 @@ moveToCell model row col =
                 Types.NoOutMsg
     in
     ( newModel, focusCell row col, outMsg )
+
+
+encodeCsv : Char -> List String -> List (Dict String String) -> String
+encodeCsv separator varNames rows =
+    CsvEncode.encode
+        { fieldSeparator = separator
+        , encoder =
+            CsvEncode.withFieldNames
+                (\row ->
+                    List.map
+                        (\name -> ( name, Dict.get name row |> Maybe.withDefault "" ))
+                        varNames
+                )
+        }
+        rows
+
+
+buildRowDecoder : List String -> CsvDecode.Decoder (Dict String String)
+buildRowDecoder varNames =
+    case varNames of
+        [] ->
+            CsvDecode.into (\_ -> Dict.empty)
+                |> CsvDecode.pipeline (CsvDecode.field "" CsvDecode.string)
+
+        first :: rest ->
+            List.foldl
+                (\varName prevDecoder ->
+                    CsvDecode.into (\dict val -> Dict.insert varName val dict)
+                        |> CsvDecode.pipeline prevDecoder
+                        |> CsvDecode.pipeline (CsvDecode.field varName CsvDecode.string)
+                )
+                (CsvDecode.into (\val -> Dict.singleton first val)
+                    |> CsvDecode.pipeline (CsvDecode.field first CsvDecode.string)
+                )
+                rest
+
+
+decodeCsv : Char -> List String -> String -> Result String (List (Dict String String))
+decodeCsv separator varNames csvText =
+    CsvDecode.decodeCustom
+        { fieldSeparator = separator }
+        CsvDecode.FieldNamesFromFirstRow
+        (buildRowDecoder varNames)
+        csvText
+        |> Result.mapError CsvDecode.errorToString
 
 
 view : Model -> Html Msg

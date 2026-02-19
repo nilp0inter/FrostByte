@@ -60,6 +60,10 @@ type alias Model =
     , printQueue : List Int
     , focusedCell : Maybe ( Int, Int )
     , cellMode : CellMode
+    , csvMode : Bool
+    , csvText : String
+    , csvError : Maybe String
+    , fieldSeparator : Char
     }
 
 
@@ -82,6 +86,9 @@ type Msg
     | CellKeyDown String Bool Bool Int Int
     | CellBlurred Int Int
     | FocusResult (Result Browser.Dom.Error ())
+    | ToggleCsvMode
+    | UpdateCsvText String
+    | UpdateFieldSeparator String
 
 
 type OutMsg
@@ -114,6 +121,10 @@ initialModel labelsetId =
     , printQueue = []
     , focusedCell = Nothing
     , cellMode = Navigating
+    , csvMode = False
+    , csvText = ""
+    , csvError = Nothing
+    , fieldSeparator = ','
     }
 
 
