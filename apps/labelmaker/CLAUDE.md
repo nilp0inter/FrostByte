@@ -24,7 +24,7 @@ labelmaker_api    — External interface: read views + RPC write functions (expo
 ## Key Database Objects
 
 **Data schema (persistent — `labelmaker_data`):**
-- **`labelmaker_data.event`**: Append-only event store (id BIGSERIAL, type TEXT, payload JSONB, created_at TIMESTAMPTZ)
+- **`labelmaker_data.event`**: Append-only event store (id BIGSERIAL, type TEXT, payload JSONB, created_at TIMESTAMPTZ, version INTEGER DEFAULT 1)
 
 **Logic schema (idempotent — `labelmaker_logic`):**
 - **`labelmaker_logic.template`**: Projection table (id UUID, name, label_type_id, label_width, label_height, corner_radius, rotate, padding, content JSONB, next_id, sample_values JSONB, created_at, deleted)

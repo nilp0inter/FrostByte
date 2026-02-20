@@ -102,6 +102,25 @@ Scripts in `common/migrations/` run on the Pi via `task migrate`. They execute i
 - Print clear progress messages (the output is shown by Ansible)
 - If the migration changes event payloads, call the relevant `replay_all_events()` function at the end
 
+### Event Versioning
+
+Each event table has a `version INTEGER NOT NULL DEFAULT 1` column. This enables reliable data migrations:
+
+- **New events** get `version = 1` automatically (DEFAULT)
+- **Migration scripts** query `WHERE type = '...' AND version = N`, transform payloads, and bump `version = N+1`
+- **Subsequent migrations** can target specific versions without re-processing already-migrated events
+- **Trigger/dispatcher/replay** ignores version — `apply_event()` dispatches on `type` alone
+
+**Pattern for a versioned migration:**
+```sql
+-- Select events to migrate
+SELECT id FROM <app>_data.event WHERE type = 'some_type' AND version = 1;
+-- Transform and bump
+UPDATE <app>_data.event SET payload = ..., version = 2 WHERE id = ...;
+```
+
+App-level migrations (`apps/*/database/migrations/`) ensure the column exists on fresh installs. The common migration `000-add-event-version.sh` adds it to existing deployments.
+
 ## Production Environment
 
 Runs on a Raspberry Pi Zero 2W (aarch64):

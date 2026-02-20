@@ -25,7 +25,7 @@ frostbyte_api    — External interface: read views + RPC write functions (expos
 ## Key Database Objects
 
 **Data schema (persistent — `frostbyte_data`):**
-- **`frostbyte_data.event`**: Append-only event store (id BIGSERIAL, type TEXT, payload JSONB, created_at TIMESTAMPTZ)
+- **`frostbyte_data.event`**: Append-only event store (id BIGSERIAL, type TEXT, payload JSONB, created_at TIMESTAMPTZ, version INTEGER DEFAULT 1)
 
 **Logic schema (idempotent — `frostbyte_logic`):**
 - **Projection tables**: `ingredient`, `container_type`, `label_preset`, `batch`, `batch_ingredient`, `portion`, `recipe`, `recipe_ingredient`

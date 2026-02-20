@@ -24,6 +24,7 @@ EVENT_IDS=$(psql -t -A -c "
   FROM frostbyte_data.event
   WHERE payload->>'image_data' IS NOT NULL
     AND payload->>'image_data' <> ''
+    AND version = 1
   ORDER BY id;
 ")
 
@@ -55,7 +56,8 @@ for event_id in $EVENT_IDS; do
     image_url="${ASSETS_PATH}/${image_uuid}"
     psql -q -c "
       UPDATE frostbyte_data.event
-      SET payload = (payload - 'image_data') || jsonb_build_object('image_url', '${image_url}')
+      SET payload = (payload - 'image_data') || jsonb_build_object('image_url', '${image_url}'),
+          version = 2
       WHERE id = ${event_id};
     "
     echo " OK (${image_url})"

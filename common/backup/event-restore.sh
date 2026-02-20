@@ -24,12 +24,22 @@ SEQ_NAME="${EVENT_TABLE}_id_seq"
 
 echo "Restoring $APP events from $CSV_FILE into $EVENT_TABLE..."
 
+# Detect whether CSV has a version column by inspecting the header
+CSV_HEADER=$(head -1 "$CSV_FILE")
+if echo "$CSV_HEADER" | grep -q 'version'; then
+  COPY_COLUMNS="id, type, payload, created_at, version"
+  echo "  (CSV has version column — preserving exact versions)"
+else
+  COPY_COLUMNS="id, type, payload, created_at"
+  echo "  (CSV has no version column — events will get DEFAULT version 1)"
+fi
+
 # Disable trigger, truncate, load CSV, reset sequence, enable trigger
 {
   echo "BEGIN;"
   echo "ALTER TABLE ${EVENT_TABLE} DISABLE TRIGGER event_handler;"
   echo "TRUNCATE ${EVENT_TABLE} CASCADE;"
-  echo "COPY ${EVENT_TABLE} (id, type, payload, created_at) FROM stdin WITH CSV HEADER;"
+  echo "COPY ${EVENT_TABLE} (${COPY_COLUMNS}) FROM stdin WITH CSV HEADER;"
   cat "$CSV_FILE"
   echo "\."
   echo "SELECT setval('${SEQ_NAME}', COALESCE((SELECT MAX(id) FROM ${EVENT_TABLE}), 1));"
