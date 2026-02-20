@@ -127,6 +127,8 @@ type PropertyChange
     | SetContainerName String
     | SetShapeType LO.ShapeType
     | SetImageUrl String
+    | SetHAlign LO.HAlign
+    | SetVAlign LO.VAlign
 
 
 type OutMsg

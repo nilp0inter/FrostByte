@@ -185,8 +185,8 @@ getValue : Committable a -> a
 
 **Template editor (Home.elm):**
 - Wrapped fields: `templateName`, `labelHeight`, `padding`, `content`, `sampleValues`
-- Deferred: `TemplateNameChanged`, `HeightChanged`, `PaddingChanged`, `UpdateObjectProperty` (except `SetShapeType`), `UpdateSampleValue`
-- Immediate: `LabelTypeChanged`, `RotateChanged`, `AddObject`, `RemoveObject`, `SetShapeType`, `MoveObjectToParent`, `TreeDrop`, `SvgMouseUp` (commits on release)
+- Deferred: `TemplateNameChanged`, `HeightChanged`, `PaddingChanged`, `UpdateObjectProperty` (except `SetShapeType`, `SetHAlign`, `SetVAlign`), `UpdateSampleValue`
+- Immediate: `LabelTypeChanged`, `RotateChanged`, `AddObject`, `RemoveObject`, `SetShapeType`, `SetHAlign`, `SetVAlign`, `MoveObjectToParent`, `TreeDrop`, `SvgMouseUp` (commits on release)
 
 **Label editor (Label.elm):**
 - Wrapped fields: `labelName : Committable String`, `values : Dict String (Committable String)`
@@ -227,14 +227,14 @@ type LabelObject
 
 **Supporting types:**
 - `Color { r, g, b, a }` — RGBA color
-- `TextProperties { fontSize, fontFamily, color }` — `fontSize` is the max for auto-fit (min derived as `max 6 (fontSize / 3)`)
+- `TextProperties { fontSize, fontFamily, color, hAlign, vAlign }` — `fontSize` is the max for auto-fit (min derived as `max 6 (fontSize / 3)`); `hAlign` (`AlignLeft | AlignCenter | AlignRight`) and `vAlign` (`AlignTop | AlignMiddle | AlignBottom`) control text positioning within the container (default: center/middle)
 - `ShapeProperties { shapeType, color }` — `ShapeType` is `Rectangle | Circle | Line`
 
 **Tree operations:** `findObject`, `updateObjectInTree`, `removeObjectFromTree`, `addObjectTo`, `allTextObjectIds`, `removeAndReturn`, `insertAtTarget`, `isDescendantOf`, `allContainerIds`
 
 **Constructors:** `newText`, `newVariable`, `newContainer`, `newShape`, `newImage` — all take a `nextId : Int` parameter
 
-**JSON serialization:** Objects are serialized with a `"type"` discriminator field (`"container"`, `"text"`, `"variable"`, `"image"`, `"shape"`). Container's `content` uses `Decode.lazy` for recursive decoding. Container `name` is decoded with `Maybe` fallback to `""` for backward compatibility with existing data.
+**JSON serialization:** Objects are serialized with a `"type"` discriminator field (`"container"`, `"text"`, `"variable"`, `"image"`, `"shape"`). Container's `content` uses `Decode.lazy` for recursive decoding. Container `name` is decoded with `Maybe` fallback to `""` for backward compatibility with existing data. `TextProperties.hAlign`/`vAlign` are encoded as strings (`"left"/"center"/"right"`, `"top"/"middle"/"bottom"`) and decoded with `optionalField` defaulting to `"center"`/`"middle"` for backward compatibility with existing templates.
 
 ## Label Canvas Editor (Template Editor Page)
 
@@ -291,8 +291,8 @@ The editor page (`/template/<uuid>`) is a live label canvas editor with composab
 3. **Add toolbar**: buttons to add Text, Variable, Container, Rectangle, Circle, Line, Image (appends to root or inside selected container)
 4. **Property editor** (bottom): context-sensitive controls for selected object:
    - Container: name, x, y, width, height
-   - TextObj: content, font family, font size, RGB color
-   - VariableObj: variable name, sample value, font family, font size, RGB color
+   - TextObj: content, font family, font size, horizontal alignment, vertical alignment, RGB color
+   - VariableObj: variable name, sample value, font family, font size, horizontal alignment, vertical alignment, RGB color
    - ShapeObj: shape type dropdown, RGB color
    - ImageObj: URL input
    - All types: "Mover a" dropdown to reparent into a container or root level
@@ -302,7 +302,7 @@ The editor page (`/template/<uuid>`) is a live label canvas editor with composab
 - `SelectObject (Maybe ObjectId)` — Select/deselect an object (ephemeral)
 - `AddObject LabelObject` — Add object to root or inside selected container → immediate `template_content_set`
 - `RemoveObject ObjectId` — Remove object from tree → immediate `template_content_set`
-- `UpdateObjectProperty ObjectId PropertyChange` — Apply a property change → deferred (except `SetShapeType` which is immediate). Includes `SetContainerName`.
+- `UpdateObjectProperty ObjectId PropertyChange` — Apply a property change → deferred (except `SetShapeType`, `SetHAlign`, `SetVAlign` which are immediate). Includes `SetContainerName`.
 - `UpdateSampleValue String String` — Set sample value for a variable (deferred)
 - `LabelTypeChanged` → immediate `template_label_type_set`
 - `HeightChanged` → deferred, updates model only

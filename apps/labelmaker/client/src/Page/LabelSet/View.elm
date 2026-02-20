@@ -182,21 +182,43 @@ renderTextSvg model parentW parentH objId displayText props =
 
         Just computed ->
             let
+                pad =
+                    toFloat model.padding
+
                 lineHeight =
                     toFloat computed.fittedFontSize * 1.2
 
                 totalTextHeight =
                     lineHeight * toFloat (List.length computed.lines)
 
+                ( xPos, anchor ) =
+                    case props.hAlign of
+                        LO.AlignLeft ->
+                            ( pad, "start" )
+
+                        LO.AlignCenter ->
+                            ( parentW / 2, "middle" )
+
+                        LO.AlignRight ->
+                            ( parentW - pad, "end" )
+
                 startY =
-                    (parentH - totalTextHeight) / 2 + lineHeight / 2
+                    case props.vAlign of
+                        LO.AlignTop ->
+                            pad + lineHeight / 2
+
+                        LO.AlignMiddle ->
+                            (parentH - totalTextHeight) / 2 + lineHeight / 2
+
+                        LO.AlignBottom ->
+                            parentH - pad - totalTextHeight + lineHeight / 2
             in
             List.indexedMap
                 (\i line ->
                     Svg.text_
-                        [ SA.x (String.fromFloat (parentW / 2))
+                        [ SA.x (String.fromFloat xPos)
                         , SA.y (String.fromFloat (startY + toFloat i * lineHeight))
-                        , SA.textAnchor "middle"
+                        , SA.textAnchor anchor
                         , SA.dominantBaseline "central"
                         , SA.fontFamily props.fontFamily
                         , SA.fontSize (String.fromInt computed.fittedFontSize)

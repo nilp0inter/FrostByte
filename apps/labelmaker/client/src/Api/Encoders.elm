@@ -69,7 +69,35 @@ encodeTextProperties props =
         [ ( "fontSize", Encode.float props.fontSize )
         , ( "fontFamily", Encode.string props.fontFamily )
         , ( "color", encodeColor props.color )
+        , ( "hAlign", encodeHAlign props.hAlign )
+        , ( "vAlign", encodeVAlign props.vAlign )
         ]
+
+
+encodeHAlign : LO.HAlign -> Encode.Value
+encodeHAlign align =
+    case align of
+        LO.AlignLeft ->
+            Encode.string "left"
+
+        LO.AlignCenter ->
+            Encode.string "center"
+
+        LO.AlignRight ->
+            Encode.string "right"
+
+
+encodeVAlign : LO.VAlign -> Encode.Value
+encodeVAlign align =
+    case align of
+        LO.AlignTop ->
+            Encode.string "top"
+
+        LO.AlignMiddle ->
+            Encode.string "middle"
+
+        LO.AlignBottom ->
+            Encode.string "bottom"
 
 
 encodeShapeProperties : LO.ShapeProperties -> Encode.Value

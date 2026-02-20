@@ -1,10 +1,12 @@
 module Data.LabelObject exposing
     ( Color
+    , HAlign(..)
     , LabelObject(..)
     , ObjectId
     , ShapeProperties
     , ShapeType(..)
     , TextProperties
+    , VAlign(..)
     , addObjectTo
     , allContainerIds
     , allTextObjectIds
@@ -37,10 +39,24 @@ type alias Color =
     { r : Int, g : Int, b : Int, a : Float }
 
 
+type HAlign
+    = AlignLeft
+    | AlignCenter
+    | AlignRight
+
+
+type VAlign
+    = AlignTop
+    | AlignMiddle
+    | AlignBottom
+
+
 type alias TextProperties =
     { fontSize : Float
     , fontFamily : String
     , color : Color
+    , hAlign : HAlign
+    , vAlign : VAlign
     }
 
 
@@ -101,6 +117,8 @@ defaultTextProperties =
     { fontSize = 48
     , fontFamily = "Atkinson Hyperlegible"
     , color = defaultColor
+    , hAlign = AlignCenter
+    , vAlign = AlignMiddle
     }
 
 

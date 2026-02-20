@@ -315,6 +315,12 @@ update msg model =
                         SetShapeType _ ->
                             True
 
+                        SetHAlign _ ->
+                            True
+
+                        SetVAlign _ ->
+                            True
+
                         _ ->
                             False
 
@@ -893,6 +899,18 @@ applyPropertyChange change obj =
         ( SetImageUrl val, ImageObj r ) ->
             ImageObj { r | url = val }
 
+        ( SetHAlign align, TextObj r ) ->
+            TextObj { r | properties = setHAlign align r.properties }
+
+        ( SetHAlign align, VariableObj r ) ->
+            VariableObj { r | properties = setHAlign align r.properties }
+
+        ( SetVAlign align, TextObj r ) ->
+            TextObj { r | properties = setVAlign align r.properties }
+
+        ( SetVAlign align, VariableObj r ) ->
+            VariableObj { r | properties = setVAlign align r.properties }
+
         _ ->
             obj
 
@@ -936,6 +954,16 @@ setColorB v props =
             props.color
     in
     { props | color = { c | b = v } }
+
+
+setHAlign : LO.HAlign -> LO.TextProperties -> LO.TextProperties
+setHAlign align props =
+    { props | hAlign = align }
+
+
+setVAlign : LO.VAlign -> LO.TextProperties -> LO.TextProperties
+setVAlign align props =
+    { props | vAlign = align }
 
 
 

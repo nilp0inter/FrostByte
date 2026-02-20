@@ -213,21 +213,43 @@ renderTextSvg model parentW parentH objId displayText props isSelected =
 
         Just computed ->
             let
+                pad =
+                    toFloat (getValue model.padding)
+
                 lineHeight =
                     toFloat computed.fittedFontSize * 1.2
 
                 totalTextHeight =
                     lineHeight * toFloat (List.length computed.lines)
 
+                ( xPos, anchor ) =
+                    case props.hAlign of
+                        LO.AlignLeft ->
+                            ( pad, "start" )
+
+                        LO.AlignCenter ->
+                            ( parentW / 2, "middle" )
+
+                        LO.AlignRight ->
+                            ( parentW - pad, "end" )
+
                 startY =
-                    (parentH - totalTextHeight) / 2 + lineHeight / 2
+                    case props.vAlign of
+                        LO.AlignTop ->
+                            pad + lineHeight / 2
+
+                        LO.AlignMiddle ->
+                            (parentH - totalTextHeight) / 2 + lineHeight / 2
+
+                        LO.AlignBottom ->
+                            parentH - pad - totalTextHeight + lineHeight / 2
             in
             List.indexedMap
                 (\i line ->
                     Svg.text_
-                        [ SA.x (String.fromFloat (parentW / 2))
+                        [ SA.x (String.fromFloat xPos)
                         , SA.y (String.fromFloat (startY + toFloat i * lineHeight))
-                        , SA.textAnchor "middle"
+                        , SA.textAnchor anchor
                         , SA.dominantBaseline "central"
                         , SA.fontFamily props.fontFamily
                         , SA.fontSize (String.fromInt computed.fittedFontSize)
@@ -831,8 +853,49 @@ viewTextPropertiesInputs objId props =
             (propTextInput props.fontFamily (\v -> UpdateObjectProperty objId (SetFontFamily v)) CommitContent)
         , propField "Tama\u{00F1}o m\u{00E1}x."
             (propNumberInput (String.fromFloat props.fontSize) (\v -> UpdateObjectProperty objId (SetFontSize v)) CommitContent)
+        , viewHAlignButtons objId props.hAlign
+        , viewVAlignButtons objId props.vAlign
         , viewColorInputs objId props.color
         ]
+
+
+viewHAlignButtons : ObjectId -> LO.HAlign -> Html Msg
+viewHAlignButtons objId current =
+    div []
+        [ label [ class "block text-xs text-gray-500 mb-1" ] [ text "Alineaci\u{00F3}n horizontal" ]
+        , div [ class "flex rounded-lg overflow-hidden border border-gray-300" ]
+            [ alignButton "Izq." (current == LO.AlignLeft) (UpdateObjectProperty objId (SetHAlign LO.AlignLeft))
+            , alignButton "Centro" (current == LO.AlignCenter) (UpdateObjectProperty objId (SetHAlign LO.AlignCenter))
+            , alignButton "Der." (current == LO.AlignRight) (UpdateObjectProperty objId (SetHAlign LO.AlignRight))
+            ]
+        ]
+
+
+viewVAlignButtons : ObjectId -> LO.VAlign -> Html Msg
+viewVAlignButtons objId current =
+    div []
+        [ label [ class "block text-xs text-gray-500 mb-1" ] [ text "Alineaci\u{00F3}n vertical" ]
+        , div [ class "flex rounded-lg overflow-hidden border border-gray-300" ]
+            [ alignButton "Arriba" (current == LO.AlignTop) (UpdateObjectProperty objId (SetVAlign LO.AlignTop))
+            , alignButton "Medio" (current == LO.AlignMiddle) (UpdateObjectProperty objId (SetVAlign LO.AlignMiddle))
+            , alignButton "Abajo" (current == LO.AlignBottom) (UpdateObjectProperty objId (SetVAlign LO.AlignBottom))
+            ]
+        ]
+
+
+alignButton : String -> Bool -> Msg -> Html Msg
+alignButton lbl isActive msg =
+    button
+        [ class
+            (if isActive then
+                "flex-1 px-2 py-1.5 text-xs font-medium bg-label-600 text-white"
+
+             else
+                "flex-1 px-2 py-1.5 text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200"
+            )
+        , onClick msg
+        ]
+        [ text lbl ]
 
 
 viewColorInputs : ObjectId -> LO.Color -> Html Msg

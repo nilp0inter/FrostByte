@@ -145,10 +145,60 @@ labelObjectByType typeStr =
 
 textPropertiesDecoder : Decoder LO.TextProperties
 textPropertiesDecoder =
-    Decode.map3 LO.TextProperties
-        (Decode.field "fontSize" Decode.float)
-        (Decode.field "fontFamily" Decode.string)
-        (Decode.field "color" colorDecoder)
+    Decode.succeed LO.TextProperties
+        |> andMap (Decode.field "fontSize" Decode.float)
+        |> andMap (Decode.field "fontFamily" Decode.string)
+        |> andMap (Decode.field "color" colorDecoder)
+        |> andMap (optionalField "hAlign" hAlignDecoder LO.AlignCenter)
+        |> andMap (optionalField "vAlign" vAlignDecoder LO.AlignMiddle)
+
+
+optionalField : String -> Decoder a -> a -> Decoder a
+optionalField fieldName decoder default =
+    Decode.oneOf
+        [ Decode.field fieldName decoder
+        , Decode.succeed default
+        ]
+
+
+hAlignDecoder : Decoder LO.HAlign
+hAlignDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\s ->
+                case s of
+                    "left" ->
+                        Decode.succeed LO.AlignLeft
+
+                    "center" ->
+                        Decode.succeed LO.AlignCenter
+
+                    "right" ->
+                        Decode.succeed LO.AlignRight
+
+                    _ ->
+                        Decode.fail ("Unknown hAlign: " ++ s)
+            )
+
+
+vAlignDecoder : Decoder LO.VAlign
+vAlignDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\s ->
+                case s of
+                    "top" ->
+                        Decode.succeed LO.AlignTop
+
+                    "middle" ->
+                        Decode.succeed LO.AlignMiddle
+
+                    "bottom" ->
+                        Decode.succeed LO.AlignBottom
+
+                    _ ->
+                        Decode.fail ("Unknown vAlign: " ++ s)
+            )
 
 
 shapePropertiesDecoder : Decoder LO.ShapeProperties
