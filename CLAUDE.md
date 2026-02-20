@@ -84,7 +84,7 @@ KitchenStack/
 - **Env vars**: `ROOT_ACCESS_KEY_ID`, `ROOT_SECRET_ACCESS_KEY` (VersityGW root credentials); `VGW_PORT` (listen address)
 - **Credentials**: Only used by `storage` (VersityGW itself) and `storage_init` (bucket creation via AWS CLI). After init, all object access is unauthenticated via public bucket policies. Hardcoded dev defaults work even in prod since VersityGW is not exposed outside the Docker network. Optional SOPS overrides exist in `docker-compose.secrets.yml` (`KITCHEN_STORAGE_ACCESS_KEY`, `KITCHEN_STORAGE_SECRET_KEY`) but are not required.
 - **Bucket init**: `storage_init` one-shot container creates buckets and sets public read/write policies via AWS CLI
-- **Migration**: `common/migrations/001-migrate-images.sh` migrates legacy base64 event payloads to VersityGW (idempotent, run via `task migrate`)
+- **Migration**: `common/migrations/000-migrate-images.sh` migrates legacy base64 event payloads to VersityGW (idempotent, run via `task migrate`)
 
 ### Data Migrations
 
@@ -119,7 +119,7 @@ SELECT id FROM <app>_data.event WHERE type = 'some_type' AND version = 1;
 UPDATE <app>_data.event SET payload = ..., version = 2 WHERE id = ...;
 ```
 
-App-level migrations (`apps/*/database/migrations/`) ensure the column exists on fresh installs. The common migration `000-add-event-version.sh` adds it to existing deployments.
+The version column is included in each app's initial migration (`001-initial.sql`).
 
 ## Production Environment
 
@@ -331,7 +331,7 @@ Both modes use named volumes (`frostbyte_client_node_modules`, `labelmaker_clien
 - `.github/workflows/build-labelmaker-client.yml` - LabelMaker client CI pipeline
 - `.github/workflows/build-printer.yml` - Printer service CI pipeline
 - `docker-compose.secrets.yml` - Maps SOPS secrets to service environments
-- `common/migrations/001-migrate-images.sh` - Migration: base64 event payloads → VersityGW (idempotent)
+- `common/migrations/000-migrate-images.sh` - Migration: base64 event payloads → VersityGW (idempotent)
 - `deploy/bootstrap.yml` - Ansible playbook: provision fresh Pi
 - `deploy/deploy.yml` - Ansible playbook: routine deployment
 - `deploy/restore.yml` - Ansible playbook: disaster recovery data restore

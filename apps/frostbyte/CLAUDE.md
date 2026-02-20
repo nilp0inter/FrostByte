@@ -47,8 +47,7 @@ frostbyte_api    — External interface: read views + RPC write functions (expos
 
 ```
 apps/frostbyte/database/
-├── migrations/001-initial.sql            # Data schema (tables, indexes, extensions)
-├── migrations/003-monorepo-rename.sql    # Schema rename: data → frostbyte_data
+├── migrations/001-initial.sql            # Data schema (event table, indexes, extensions)
 ├── logic.sql                             # Logic schema (event handlers, replay) — idempotent
 ├── api.sql                               # API schema (views, RPC functions) — idempotent
 ├── seed.sql                              # Seed data as events
