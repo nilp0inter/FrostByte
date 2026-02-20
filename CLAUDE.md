@@ -11,7 +11,7 @@ KitchenStack/
 ├── common/                    # Shared infrastructure
 │   ├── gateway/               # Caddy reverse proxy (Caddyfile, Caddyfile.dev)
 │   ├── printer_service/       # Python FastAPI label printing service
-│   ├── storage/               # VersityGW S3 migration scripts
+│   ├── migrations/            # Idempotent migration scripts (NNN-description.sh)
 │   └── backup/                # GoBackup config + scripts
 ├── apps/
 │   ├── frostbyte/             # Freezer management app (:80)
@@ -38,12 +38,13 @@ KitchenStack/
 │   ├── bootstrap.yml          # Full Pi provisioning (run once on new hardware)
 │   ├── deploy.yml             # App deployment (run on every update)
 │   ├── restore.yml            # Disaster recovery (restore from CSV backup)
+│   ├── migrate.yml            # Run all migration scripts from common/migrations/
 │   ├── secrets/
 │   │   └── age-key.sops       # Age private key encrypted with SOPS (GPG-only)
 │   └── templates/
 │       └── kitchen.service.j2 # Systemd service unit (templated)
 ├── flake.nix                  # Nix dev shell (ansible, sops, go-task)
-├── Taskfile.yml               # Task runner (bootstrap, deploy, restore)
+├── Taskfile.yml               # Task runner (bootstrap, deploy, restore, migrate)
 ├── docker-compose.yml         # Base config (common + app services)
 ├── docker-compose.dev.yml     # Dev overlay (Vite HMR)
 ├── docker-compose.prod.yml    # Prod overrides (pre-built images)
@@ -83,18 +84,23 @@ KitchenStack/
 - **Env vars**: `ROOT_ACCESS_KEY_ID`, `ROOT_SECRET_ACCESS_KEY` (VersityGW root credentials); `VGW_PORT` (listen address)
 - **Credentials**: Only used by `storage` (VersityGW itself) and `storage_init` (bucket creation via AWS CLI). After init, all object access is unauthenticated via public bucket policies. Hardcoded dev defaults work even in prod since VersityGW is not exposed outside the Docker network. Optional SOPS overrides exist in `docker-compose.secrets.yml` (`KITCHEN_STORAGE_ACCESS_KEY`, `KITCHEN_STORAGE_SECRET_KEY`) but are not required.
 - **Bucket init**: `storage_init` one-shot container creates buckets and sets public read/write policies via AWS CLI
-- **Migration**: `common/storage/migrate-images.sh` migrates legacy base64 event payloads to VersityGW (run once after upgrading from base64 image storage)
+- **Migration**: `common/migrations/001-migrate-images.sh` migrates legacy base64 event payloads to VersityGW (idempotent, run via `task migrate`)
 
-**Migrating existing base64 images:**
-```bash
-# Run from the repo root (requires running stack with storage service)
-docker run --rm --network kitchenstack_kitchen_network \
-  -e PGHOST=postgres -e PGUSER=kitchen_user \
-  -e PGPASSWORD=kitchen_password -e PGDATABASE=kitchen_db \
-  -e STORAGE_URL=http://storage:7070 \
-  -v ./common/storage/migrate-images.sh:/migrate.sh:ro \
-  alpine:latest sh -c "apk add --no-cache curl postgresql-client >/dev/null 2>&1 && sh /migrate.sh"
-```
+### Data Migrations
+
+Scripts in `common/migrations/` run on the Pi via `task migrate`. They execute in lexicographic order inside a disposable Alpine container with `psql`, `curl`, and access to the Docker network.
+
+**Adding a new migration:**
+1. Create `common/migrations/NNN-description.sh` (next number in sequence)
+2. The script must be **idempotent** — safe to run multiple times (check before acting, skip if already done)
+3. Available environment: `PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `STORAGE_URL`
+4. Run with `task migrate`
+
+**Conventions:**
+- Use `set -eu` at the top
+- Check whether the migration has already been applied before making changes
+- Print clear progress messages (the output is shown by Ansible)
+- If the migration changes event payloads, call the relevant `replay_all_events()` function at the end
 
 ## Production Environment
 
@@ -121,6 +127,9 @@ task bootstrap
 task restore FROSTBYTE_CSV=/path/to/frostbyte_events.csv
 task restore FROSTBYTE_CSV=/path/to/frostbyte.csv LABELMAKER_CSV=/path/to/labelmaker.csv
 
+# Run all migration scripts on the Pi (idempotent)
+task migrate
+
 # Test SSH connectivity
 cd deploy && ansible all -m ping
 ```
@@ -129,6 +138,7 @@ cd deploy && ansible all -m ping
 - `task deploy` — runs `git pull`, `docker compose pull`, restarts `kitchen.service` on the Pi
 - `task bootstrap` — installs packages, deploys age key (from SOPS-encrypted `deploy/secrets/age-key.sops`), clones repo, installs systemd service, starts stack
 - `task restore FROSTBYTE_CSV=... [LABELMAKER_CSV=...]` — copies CSV event files to Pi, runs `event-restore.sh` for each app
+- `task migrate` — runs all migration scripts from `common/migrations/` in sorted order on the Pi
 
 **One-time setup (age key):**
 ```bash
@@ -302,10 +312,11 @@ Both modes use named volumes (`frostbyte_client_node_modules`, `labelmaker_clien
 - `.github/workflows/build-labelmaker-client.yml` - LabelMaker client CI pipeline
 - `.github/workflows/build-printer.yml` - Printer service CI pipeline
 - `docker-compose.secrets.yml` - Maps SOPS secrets to service environments
-- `common/storage/migrate-images.sh` - One-time migration: base64 event payloads → VersityGW
+- `common/migrations/001-migrate-images.sh` - Migration: base64 event payloads → VersityGW (idempotent)
 - `deploy/bootstrap.yml` - Ansible playbook: provision fresh Pi
 - `deploy/deploy.yml` - Ansible playbook: routine deployment
 - `deploy/restore.yml` - Ansible playbook: disaster recovery data restore
+- `deploy/migrate.yml` - Ansible playbook: run all migration scripts
 - `deploy/templates/kitchen.service.j2` - Systemd service unit template
 - `Taskfile.yml` - Task runner entry points (bootstrap, deploy, restore)
 - `flake.nix` - Nix dev shell (ansible, sops, go-task)

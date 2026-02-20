@@ -1,17 +1,12 @@
 #!/bin/sh
-# migrate-images.sh — Migrate base64 image data from event payloads to VersityGW S3 storage
+# 001-migrate-images.sh — Migrate base64 image data from event payloads to VersityGW S3 storage
 #
 # This script:
 # 1. Queries events with image_data in their payload
 # 2. Decodes base64 data and uploads to VersityGW via curl
 # 3. Updates event payloads: replaces image_data with image_url
 #
-# Run inside the docker network with psql + curl available:
-#   docker run --rm --network kitchenstack_kitchen_network \
-#     -e PGHOST=postgres -e PGUSER=kitchen_user \
-#     -e PGPASSWORD=kitchen_password -e PGDATABASE=kitchen_db \
-#     -v ./common/storage/migrate-images.sh:/migrate.sh:ro \
-#     alpine:latest sh -c "apk add --no-cache curl postgresql-client && sh /migrate.sh"
+# Idempotent: skips events that have already been migrated (no image_data field).
 
 set -eu
 

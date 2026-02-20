@@ -18,3 +18,8 @@ tasks:
       ansible-playbook restore.yml
       {{if .FROSTBYTE_CSV}}-e frostbyte_csv={{.FROSTBYTE_CSV}}{{end}}
       {{if .LABELMAKER_CSV}}-e labelmaker_csv={{.LABELMAKER_CSV}}{{end}}
+
+  migrate:
+    desc: Run all migration scripts on the Pi
+    dir: deploy
+    cmd: ansible-playbook migrate.yml

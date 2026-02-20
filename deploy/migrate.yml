@@ -1,0 +1,42 @@
+---
+- name: Run migrations
+  hosts: pi
+  gather_facts: false
+
+  tasks:
+    - name: Find migration scripts
+      ansible.builtin.find:
+        paths: "{{ repo_path }}/common/migrations"
+        patterns: "*.sh"
+      register: migration_files
+
+    - name: Get database password from running postgres container
+      ansible.builtin.command:
+        cmd: docker exec kitchen_postgres printenv POSTGRES_PASSWORD
+      register: pg_password
+      changed_when: false
+      when: migration_files.matched > 0
+
+    - name: Run migrations in order
+      ansible.builtin.command:
+        cmd: >-
+          docker run --rm --network kitchenstack_kitchen_network
+          -e PGHOST=postgres -e PGUSER=kitchen_user
+          -e PGPASSWORD={{ pg_password.stdout }}
+          -e PGDATABASE=kitchen_db
+          -e STORAGE_URL=http://storage:7070
+          -v {{ item.path }}:/migrate.sh:ro
+          alpine:latest sh -c "apk add --no-cache curl postgresql-client >/dev/null 2>&1 && sh /migrate.sh"
+      loop: "{{ migration_files.files | sort(attribute='path') }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      register: migration_results
+      when: migration_files.matched > 0
+
+    - name: Show migration results
+      ansible.builtin.debug:
+        msg: "{{ item.stdout_lines }}"
+      loop: "{{ migration_results.results }}"
+      loop_control:
+        label: "{{ item.item.path | basename }}"
+      when: migration_results.results is defined
