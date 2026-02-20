@@ -647,6 +647,46 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none, Types.NoOutMsg )
 
+        Types.AutoSave ->
+            let
+                ( m1, c1, _ ) =
+                    update Types.CommitTemplateName model
+
+                ( m2, c2, _ ) =
+                    update Types.CommitHeight m1
+
+                ( m3, c3, _ ) =
+                    update Types.CommitPadding m2
+
+                ( m4, c4, _ ) =
+                    update Types.CommitContent m3
+
+                dirtyVarNames =
+                    Dict.toList m4.sampleValues
+                        |> List.filterMap
+                            (\( k, v ) ->
+                                case v of
+                                    Dirty _ ->
+                                        Just k
+
+                                    Clean _ ->
+                                        Nothing
+                            )
+
+                ( m5, c5s ) =
+                    List.foldl
+                        (\varName ( accModel, accCmds ) ->
+                            let
+                                ( nm, nc, _ ) =
+                                    update (Types.CommitSampleValue varName) accModel
+                            in
+                            ( nm, nc :: accCmds )
+                        )
+                        ( m4, [] )
+                        dirtyVarNames
+            in
+            ( m5, Cmd.batch (c1 :: c2 :: c3 :: c4 :: c5s), Types.NoOutMsg )
+
         Types.EventEmitted _ ->
             ( model, Cmd.none, Types.NoOutMsg )
 

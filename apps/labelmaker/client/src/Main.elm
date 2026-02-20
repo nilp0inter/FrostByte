@@ -20,6 +20,7 @@ import Page.Templates as Templates
 import Page.Templates.Types as TemplatesTypes
 import Ports
 import Process
+import Time
 import Route exposing (Route(..))
 import Task
 import Types exposing (..)
@@ -102,6 +103,7 @@ type Msg
     | GotTextMeasureResult Ports.TextMeasureResult
     | GotPngResult Ports.PngResult
     | DismissNotification Int
+    | AutoSaveTick
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -266,6 +268,41 @@ update msg model =
                     let
                         ( newPageModel, pageCmd, outMsg ) =
                             LabelSet.update (LabelSetTypes.GotPngResult result) pageModel
+
+                        newModel =
+                            { model | page = LabelSetEditorPage newPageModel }
+                    in
+                    handleLabelSetOutMsg outMsg newModel pageCmd
+
+                _ ->
+                    ( model, Cmd.none )
+
+        AutoSaveTick ->
+            case model.page of
+                TemplateEditorPage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            Home.update HomeTypes.AutoSave pageModel
+
+                        newModel =
+                            { model | page = TemplateEditorPage newPageModel }
+                    in
+                    handleHomeOutMsg outMsg newModel pageCmd
+
+                LabelEditorPage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            Label.update LabelTypes.AutoSave pageModel
+
+                        newModel =
+                            { model | page = LabelEditorPage newPageModel }
+                    in
+                    handleLabelOutMsg outMsg newModel pageCmd
+
+                LabelSetEditorPage pageModel ->
+                    let
+                        ( newPageModel, pageCmd, outMsg ) =
+                            LabelSet.update LabelSetTypes.AutoSave pageModel
 
                         newModel =
                             { model | page = LabelSetEditorPage newPageModel }
@@ -523,6 +560,7 @@ subscriptions model =
     Sub.batch
         [ Ports.receiveTextMeasureResult GotTextMeasureResult
         , Ports.receivePngResult GotPngResult
+        , Time.every 3000 (\_ -> AutoSaveTick)
         , case model.page of
             TemplateEditorPage pageModel ->
                 Sub.map HomeMsg (Home.subscriptions pageModel)

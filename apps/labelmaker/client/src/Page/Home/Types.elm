@@ -107,6 +107,7 @@ type Msg
     | TreeDrop
     | TreeDragEnd
     | MoveObjectToParent ObjectId (Maybe ObjectId)
+    | AutoSave
 
 
 type PropertyChange

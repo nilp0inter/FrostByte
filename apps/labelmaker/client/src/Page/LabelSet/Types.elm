@@ -89,6 +89,7 @@ type Msg
     | ToggleCsvMode
     | UpdateCsvText String
     | UpdateFieldSeparator String
+    | AutoSave
 
 
 type OutMsg

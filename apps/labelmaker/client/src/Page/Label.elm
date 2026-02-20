@@ -177,6 +177,16 @@ update msg model =
             , Types.ShowNotification "Error al imprimir" Error
             )
 
+        Types.AutoSave ->
+            let
+                ( m1, c1, _ ) =
+                    update Types.CommitName model
+
+                ( m2, c2, _ ) =
+                    update Types.CommitValues m1
+            in
+            ( m2, Cmd.batch [ c1, c2 ], Types.NoOutMsg )
+
         Types.EventEmitted _ ->
             ( model, Cmd.none, Types.NoOutMsg )
 

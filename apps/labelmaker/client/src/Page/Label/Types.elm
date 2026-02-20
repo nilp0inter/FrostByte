@@ -52,6 +52,7 @@ type Msg
     | GotPngResult Ports.PngResult
     | GotPrintResult (Result Http.Error ())
     | EventEmitted (Result Http.Error ())
+    | AutoSave
 
 
 type OutMsg
