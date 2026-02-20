@@ -32,6 +32,7 @@ type alias ComputedText =
 type DragMode
     = Moving
     | ResizingHandle Handle
+    | DraggingSplit
 
 
 type Handle
@@ -46,6 +47,7 @@ type alias DragState =
     , targetId : ObjectId
     , startMouse : { x : Float, y : Float }
     , startRect : { x : Float, y : Float, width : Float, height : Float }
+    , startSplit : Float
     }
 
 
@@ -59,6 +61,7 @@ type DropTarget
     = DropBefore ObjectId
     | DropAfter ObjectId
     | DropInto ObjectId
+    | DropIntoSlot ObjectId LO.SlotPosition
 
 
 type alias Model =
@@ -107,6 +110,7 @@ type Msg
     | TreeDrop
     | TreeDragEnd
     | MoveObjectToParent ObjectId (Maybe ObjectId)
+    | MoveObjectToSlot ObjectId ObjectId LO.SlotPosition
     | AutoSave
     | SelectImage ObjectId
     | GotImageResult Ports.FileSelectResult
@@ -129,6 +133,7 @@ type PropertyChange
     | SetImageUrl String
     | SetHAlign LO.HAlign
     | SetVAlign LO.VAlign
+    | SetSplitPercent String
 
 
 type OutMsg
@@ -232,6 +237,38 @@ collectForObject model parentW parentH obj =
     case obj of
         Container r ->
             collectMeasurements model r.width r.height r.content
+
+        VSplit r ->
+            let
+                topH =
+                    r.height * r.split / 100
+
+                bottomH =
+                    r.height - topH
+
+                topReqs =
+                    r.top |> Maybe.map (collectForObject model r.width topH) |> Maybe.withDefault []
+
+                bottomReqs =
+                    r.bottom |> Maybe.map (collectForObject model r.width bottomH) |> Maybe.withDefault []
+            in
+            topReqs ++ bottomReqs
+
+        HSplit r ->
+            let
+                leftW =
+                    r.width * r.split / 100
+
+                rightW =
+                    r.width - leftW
+
+                leftReqs =
+                    r.left |> Maybe.map (collectForObject model leftW r.height) |> Maybe.withDefault []
+
+                rightReqs =
+                    r.right |> Maybe.map (collectForObject model rightW r.height) |> Maybe.withDefault []
+            in
+            leftReqs ++ rightReqs
 
         TextObj r ->
             let

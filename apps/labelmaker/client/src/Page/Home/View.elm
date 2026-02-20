@@ -160,6 +160,158 @@ renderObject model parentW parentH obj =
                 )
             ]
 
+        VSplit r ->
+            let
+                topH =
+                    r.height * r.split / 100
+
+                bottomH =
+                    r.height - topH
+            in
+            [ Svg.g
+                ([ SA.transform ("translate(" ++ String.fromFloat r.x ++ "," ++ String.fromFloat r.y ++ ")")
+                 ]
+                    ++ selectionAttrs r.id
+                )
+                (renderMaybeSlot model r.width topH r.top
+                    ++ [ Svg.g
+                            [ SA.transform ("translate(0," ++ String.fromFloat topH ++ ")") ]
+                            (renderMaybeSlot model r.width bottomH r.bottom)
+                       ]
+                    ++ [ Svg.line
+                            [ SA.x1 "0"
+                            , SA.y1 (String.fromFloat topH)
+                            , SA.x2 (String.fromFloat r.width)
+                            , SA.y2 (String.fromFloat topH)
+                            , SA.stroke "#999"
+                            , SA.strokeWidth "1"
+                            , SA.strokeDasharray "4,2"
+                            , SA.pointerEvents "none"
+                            ]
+                            []
+                       ]
+                    ++ (if isSelected then
+                            [ Svg.rect
+                                [ SA.x "0"
+                                , SA.y "0"
+                                , SA.width (String.fromFloat r.width)
+                                , SA.height (String.fromFloat r.height)
+                                , SA.fill "rgba(59,130,246,0.05)"
+                                , SA.stroke "#3b82f6"
+                                , SA.strokeWidth "2"
+                                , SA.strokeDasharray "6,3"
+                                , SA.cursor "move"
+                                , onSvgMouseDown r.id Moving
+                                ]
+                                []
+                            , Svg.line
+                                [ SA.x1 "0"
+                                , SA.y1 (String.fromFloat topH)
+                                , SA.x2 (String.fromFloat r.width)
+                                , SA.y2 (String.fromFloat topH)
+                                , SA.stroke "#3b82f6"
+                                , SA.strokeWidth "3"
+                                , SA.strokeDasharray "6,3"
+                                , SA.cursor "row-resize"
+                                , onSvgMouseDown r.id DraggingSplit
+                                ]
+                                []
+                            , Svg.circle
+                                [ SA.cx (String.fromFloat (r.width / 2))
+                                , SA.cy (String.fromFloat topH)
+                                , SA.r "5"
+                                , SA.fill "#3b82f6"
+                                , SA.stroke "white"
+                                , SA.strokeWidth "1"
+                                , SA.cursor "row-resize"
+                                , onSvgMouseDown r.id DraggingSplit
+                                ]
+                                []
+                            ]
+                                ++ resizeHandles r.id r.width r.height
+
+                        else
+                            []
+                       )
+                )
+            ]
+
+        HSplit r ->
+            let
+                leftW =
+                    r.width * r.split / 100
+
+                rightW =
+                    r.width - leftW
+            in
+            [ Svg.g
+                ([ SA.transform ("translate(" ++ String.fromFloat r.x ++ "," ++ String.fromFloat r.y ++ ")")
+                 ]
+                    ++ selectionAttrs r.id
+                )
+                (renderMaybeSlot model leftW r.height r.left
+                    ++ [ Svg.g
+                            [ SA.transform ("translate(" ++ String.fromFloat leftW ++ ",0)") ]
+                            (renderMaybeSlot model rightW r.height r.right)
+                       ]
+                    ++ [ Svg.line
+                            [ SA.x1 (String.fromFloat leftW)
+                            , SA.y1 "0"
+                            , SA.x2 (String.fromFloat leftW)
+                            , SA.y2 (String.fromFloat r.height)
+                            , SA.stroke "#999"
+                            , SA.strokeWidth "1"
+                            , SA.strokeDasharray "4,2"
+                            , SA.pointerEvents "none"
+                            ]
+                            []
+                       ]
+                    ++ (if isSelected then
+                            [ Svg.rect
+                                [ SA.x "0"
+                                , SA.y "0"
+                                , SA.width (String.fromFloat r.width)
+                                , SA.height (String.fromFloat r.height)
+                                , SA.fill "rgba(59,130,246,0.05)"
+                                , SA.stroke "#3b82f6"
+                                , SA.strokeWidth "2"
+                                , SA.strokeDasharray "6,3"
+                                , SA.cursor "move"
+                                , onSvgMouseDown r.id Moving
+                                ]
+                                []
+                            , Svg.line
+                                [ SA.x1 (String.fromFloat leftW)
+                                , SA.y1 "0"
+                                , SA.x2 (String.fromFloat leftW)
+                                , SA.y2 (String.fromFloat r.height)
+                                , SA.stroke "#3b82f6"
+                                , SA.strokeWidth "3"
+                                , SA.strokeDasharray "6,3"
+                                , SA.cursor "col-resize"
+                                , onSvgMouseDown r.id DraggingSplit
+                                ]
+                                []
+                            , Svg.circle
+                                [ SA.cx (String.fromFloat leftW)
+                                , SA.cy (String.fromFloat (r.height / 2))
+                                , SA.r "5"
+                                , SA.fill "#3b82f6"
+                                , SA.stroke "white"
+                                , SA.strokeWidth "1"
+                                , SA.cursor "col-resize"
+                                , onSvgMouseDown r.id DraggingSplit
+                                ]
+                                []
+                            ]
+                                ++ resizeHandles r.id r.width r.height
+
+                        else
+                            []
+                       )
+                )
+            ]
+
         TextObj r ->
             renderTextSvg model parentW parentH r.id r.content r.properties isSelected
 
@@ -189,6 +341,16 @@ renderObject model parentW parentH obj =
                 []
             ]
                 ++ selectionOverlay parentW parentH isSelected
+
+
+renderMaybeSlot : Model -> Float -> Float -> Maybe LabelObject -> List (Svg.Svg Msg)
+renderMaybeSlot model w h slot =
+    case slot of
+        Just child ->
+            renderObjects model w h [ child ]
+
+        Nothing ->
+            []
 
 
 renderTextSvg : Model -> Float -> Float -> ObjectId -> String -> LO.TextProperties -> Bool -> List (Svg.Svg Msg)
@@ -463,12 +625,12 @@ viewObjectTree model =
             p [ class "text-sm text-gray-400 italic" ] [ text "Sin objetos" ]
 
           else
-            div [ class "space-y-1" ] (List.map (viewTreeItem model 0) content)
+            div [ class "space-y-1" ] (List.map (viewTreeItem model 0 True) content)
         ]
 
 
-viewTreeItem : Model -> Int -> LabelObject -> Html Msg
-viewTreeItem model depth obj =
+viewTreeItem : Model -> Int -> Bool -> LabelObject -> Html Msg
+viewTreeItem model depth deletable obj =
     let
         objIdVal =
             LO.objectId obj
@@ -480,6 +642,12 @@ viewTreeItem model depth obj =
             case obj of
                 Container _ ->
                     "\u{1F4E6}"
+
+                VSplit _ ->
+                    "\u{2B12}"
+
+                HSplit _ ->
+                    "\u{2B13}"
 
                 TextObj _ ->
                     "\u{1F524}"
@@ -502,6 +670,20 @@ viewTreeItem model depth obj =
                     else
                         r_.name
 
+                VSplit r_ ->
+                    if String.isEmpty r_.name then
+                        "V-Split"
+
+                    else
+                        r_.name
+
+                HSplit r_ ->
+                    if String.isEmpty r_.name then
+                        "H-Split"
+
+                    else
+                        r_.name
+
                 TextObj r ->
                     truncateStr 20 r.content
 
@@ -514,13 +696,6 @@ viewTreeItem model depth obj =
                 ShapeObj r ->
                     shapeTypeName r.properties.shapeType
 
-        children =
-            case obj of
-                Container r ->
-                    r.content
-
-                _ ->
-                    []
         isDragged =
             case model.treeDragState of
                 Just tds ->
@@ -581,11 +756,15 @@ viewTreeItem model depth obj =
             ]
             [ span [ class "w-5 text-center flex-shrink-0" ] [ text icon ]
             , span [ class "flex-1 truncate" ] [ text label_ ]
-            , button
-                [ class "text-gray-400 hover:text-red-500 flex-shrink-0 px-1"
-                , onClick (RemoveObject objIdVal)
-                ]
-                [ text "\u{00D7}" ]
+            , if deletable then
+                button
+                    [ class "text-gray-400 hover:text-red-500 flex-shrink-0 px-1"
+                    , onClick (RemoveObject objIdVal)
+                    ]
+                    [ text "\u{00D7}" ]
+
+              else
+                text ""
             ]
         , if isDropAfter then
             div
@@ -596,8 +775,70 @@ viewTreeItem model depth obj =
 
           else
             text ""
-        , div [] (List.map (viewTreeItem model (depth + 1)) children)
+        , case obj of
+            Container r ->
+                div [] (List.map (viewTreeItem model (depth + 1) True) r.content)
+
+            VSplit r ->
+                div []
+                    [ viewSlotLabel model (depth + 1) "Arriba" r.id LO.TopSlot r.top
+                    , viewSlotLabel model (depth + 1) "Abajo" r.id LO.BottomSlot r.bottom
+                    ]
+
+            HSplit r ->
+                div []
+                    [ viewSlotLabel model (depth + 1) "Izq." r.id LO.LeftSlot r.left
+                    , viewSlotLabel model (depth + 1) "Der." r.id LO.RightSlot r.right
+                    ]
+
+            _ ->
+                text ""
         ]
+
+
+viewSlotLabel : Model -> Int -> String -> ObjectId -> LO.SlotPosition -> Maybe LabelObject -> Html Msg
+viewSlotLabel model depth slotName splitId slotPosition maybeChild =
+    let
+        dropTargetHere =
+            case model.treeDragState of
+                Just tds ->
+                    tds.dropTarget
+
+                Nothing ->
+                    Nothing
+
+        isSlotDropTarget =
+            dropTargetHere == Just (DropIntoSlot splitId slotPosition)
+    in
+    div []
+        [ div
+            [ class "text-xs text-gray-400 italic"
+            , style "padding-left" (String.fromInt (depth * 16 + 8) ++ "px")
+            ]
+            [ text slotName ]
+        , case maybeChild of
+            Just child ->
+                viewTreeItem model (depth + 1) True child
+
+            Nothing ->
+                div
+                    [ class "text-xs text-gray-300 italic"
+                    , classList [ ( "bg-blue-50 ring-1 ring-blue-300 rounded", isSlotDropTarget ) ]
+                    , style "padding-left" (String.fromInt ((depth + 1) * 16 + 8) ++ "px")
+                    , style "padding-top" "2px"
+                    , style "padding-bottom" "2px"
+                    , Html.Attributes.attribute "dropzone" "move"
+                    , onDragOverSlot splitId slotPosition
+                    , onDrop TreeDrop
+                    ]
+                    [ text "(vac\u{00ED}o)" ]
+        ]
+
+
+onDragOverSlot : ObjectId -> LO.SlotPosition -> Html.Attribute Msg
+onDragOverSlot splitId slot =
+    Html.Events.preventDefaultOn "dragover"
+        (Decode.succeed ( TreeDragOver (DropIntoSlot splitId slot), True ))
 
 
 truncateStr : Int -> String -> String
@@ -634,6 +875,8 @@ viewAddToolbar model =
             [ addButton "Texto" (AddObject (LO.newText model.nextId))
             , addButton "Variable" (AddObject (LO.newVariable model.nextId))
             , addButton "Contenedor" (AddObject (LO.newContainer model.nextId 10 10 200 100))
+            , addButton "V-Split" (AddObject (LO.newVSplit model.nextId 10 10 200 200))
+            , addButton "H-Split" (AddObject (LO.newHSplit model.nextId 10 10 200 200))
             , addButton "Rect." (AddObject (LO.newShape model.nextId Rectangle))
             , addButton "C\u{00ED}rculo" (AddObject (LO.newShape model.nextId Circle))
             , addButton "L\u{00ED}nea" (AddObject (LO.newShape model.nextId Line))
@@ -693,17 +936,22 @@ viewMoveToDropdown model objId obj =
                 )
                 allContainers
 
+        -- Slot targets (empty VSplit/HSplit slots)
+        allSlots =
+            LO.allSlotTargets (getValue model.content)
+
+        validSlots =
+            List.filter
+                (\( sId, _, _ ) ->
+                    sId
+                        /= objId
+                        && not (LO.isDescendantOf sId objId (getValue model.content))
+                )
+                allSlots
+
         -- Find current parent
         currentParent =
             findParentId objId (getValue model.content)
-
-        currentValue =
-            case currentParent of
-                Nothing ->
-                    "__root__"
-
-                Just pid ->
-                    pid
     in
     propField "Mover a"
         (select
@@ -714,7 +962,12 @@ viewMoveToDropdown model objId obj =
                         MoveObjectToParent objId Nothing
 
                     else
-                        MoveObjectToParent objId (Just v)
+                        case parseSlotValue v of
+                            Just ( splitId, slot ) ->
+                                MoveObjectToSlot objId splitId slot
+
+                            Nothing ->
+                                MoveObjectToParent objId (Just v)
                 )
             ]
             (option [ value "__root__", selected (currentParent == Nothing) ] [ text "Ra\u{00ED}z" ]
@@ -723,8 +976,58 @@ viewMoveToDropdown model objId obj =
                         option [ value cId, selected (currentParent == Just cId) ] [ text cName ]
                     )
                     validTargets
+                ++ List.map
+                    (\( sId, slot, sName ) ->
+                        option [ value (slotValue sId slot) ] [ text sName ]
+                    )
+                    validSlots
             )
         )
+
+
+slotValue : ObjectId -> LO.SlotPosition -> String
+slotValue splitId slot =
+    "slot:" ++ splitId ++ ":" ++ slotPositionToString slot
+
+
+slotPositionToString : LO.SlotPosition -> String
+slotPositionToString slot =
+    case slot of
+        LO.TopSlot ->
+            "top"
+
+        LO.BottomSlot ->
+            "bottom"
+
+        LO.LeftSlot ->
+            "left"
+
+        LO.RightSlot ->
+            "right"
+
+
+parseSlotValue : String -> Maybe ( ObjectId, LO.SlotPosition )
+parseSlotValue v =
+    case String.split ":" v of
+        [ "slot", splitId, posStr ] ->
+            case posStr of
+                "top" ->
+                    Just ( splitId, LO.TopSlot )
+
+                "bottom" ->
+                    Just ( splitId, LO.BottomSlot )
+
+                "left" ->
+                    Just ( splitId, LO.LeftSlot )
+
+                "right" ->
+                    Just ( splitId, LO.RightSlot )
+
+                _ ->
+                    Nothing
+
+        _ ->
+            Nothing
 
 
 findParentId : ObjectId -> List LabelObject -> Maybe ObjectId
@@ -752,6 +1055,22 @@ findParentIdHelper parentId targetId objects =
                             Nothing ->
                                 findParentIdHelper parentId targetId rest
 
+                    VSplit r ->
+                        case findParentIdHelper (Just r.id) targetId (List.filterMap identity [ r.top, r.bottom ]) of
+                            Just found ->
+                                Just found
+
+                            Nothing ->
+                                findParentIdHelper parentId targetId rest
+
+                    HSplit r ->
+                        case findParentIdHelper (Just r.id) targetId (List.filterMap identity [ r.left, r.right ]) of
+                            Just found ->
+                                Just found
+
+                            Nothing ->
+                                findParentIdHelper parentId targetId rest
+
                     _ ->
                         findParentIdHelper parentId targetId rest
 
@@ -771,6 +1090,38 @@ viewPropertiesFor model objId obj =
                     (propNumberInput (String.fromFloat r.width) (\v -> UpdateObjectProperty objId (SetContainerWidth v)) CommitContent)
                     "Alto"
                     (propNumberInput (String.fromFloat r.height) (\v -> UpdateObjectProperty objId (SetContainerHeight v)) CommitContent)
+                ]
+
+        VSplit r ->
+            div [ class "space-y-2" ]
+                [ propField "Nombre"
+                    (propTextInput r.name (\v -> UpdateObjectProperty objId (SetContainerName v)) CommitContent)
+                , propRow "X"
+                    (propNumberInput (String.fromFloat r.x) (\v -> UpdateObjectProperty objId (SetContainerX v)) CommitContent)
+                    "Y"
+                    (propNumberInput (String.fromFloat r.y) (\v -> UpdateObjectProperty objId (SetContainerY v)) CommitContent)
+                , propRow "Ancho"
+                    (propNumberInput (String.fromFloat r.width) (\v -> UpdateObjectProperty objId (SetContainerWidth v)) CommitContent)
+                    "Alto"
+                    (propNumberInput (String.fromFloat r.height) (\v -> UpdateObjectProperty objId (SetContainerHeight v)) CommitContent)
+                , propField "Divisi\u{00F3}n (%)"
+                    (propNumberInput (String.fromFloat r.split) (\v -> UpdateObjectProperty objId (SetSplitPercent v)) CommitContent)
+                ]
+
+        HSplit r ->
+            div [ class "space-y-2" ]
+                [ propField "Nombre"
+                    (propTextInput r.name (\v -> UpdateObjectProperty objId (SetContainerName v)) CommitContent)
+                , propRow "X"
+                    (propNumberInput (String.fromFloat r.x) (\v -> UpdateObjectProperty objId (SetContainerX v)) CommitContent)
+                    "Y"
+                    (propNumberInput (String.fromFloat r.y) (\v -> UpdateObjectProperty objId (SetContainerY v)) CommitContent)
+                , propRow "Ancho"
+                    (propNumberInput (String.fromFloat r.width) (\v -> UpdateObjectProperty objId (SetContainerWidth v)) CommitContent)
+                    "Alto"
+                    (propNumberInput (String.fromFloat r.height) (\v -> UpdateObjectProperty objId (SetContainerHeight v)) CommitContent)
+                , propField "Divisi\u{00F3}n (%)"
+                    (propNumberInput (String.fromFloat r.split) (\v -> UpdateObjectProperty objId (SetSplitPercent v)) CommitContent)
                 ]
 
         TextObj r ->

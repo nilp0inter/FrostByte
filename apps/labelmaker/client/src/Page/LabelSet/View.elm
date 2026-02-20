@@ -134,6 +134,44 @@ renderObject model parentW parentH obj =
                 (renderObjects model r.width r.height r.content)
             ]
 
+        VSplit r ->
+            let
+                topH =
+                    r.height * r.split / 100
+
+                bottomH =
+                    r.height - topH
+            in
+            [ Svg.g
+                [ SA.transform ("translate(" ++ String.fromFloat r.x ++ "," ++ String.fromFloat r.y ++ ")")
+                ]
+                (renderMaybeSlot model r.width topH r.top
+                    ++ [ Svg.g
+                            [ SA.transform ("translate(0," ++ String.fromFloat topH ++ ")") ]
+                            (renderMaybeSlot model r.width bottomH r.bottom)
+                       ]
+                )
+            ]
+
+        HSplit r ->
+            let
+                leftW =
+                    r.width * r.split / 100
+
+                rightW =
+                    r.width - leftW
+            in
+            [ Svg.g
+                [ SA.transform ("translate(" ++ String.fromFloat r.x ++ "," ++ String.fromFloat r.y ++ ")")
+                ]
+                (renderMaybeSlot model leftW r.height r.left
+                    ++ [ Svg.g
+                            [ SA.transform ("translate(" ++ String.fromFloat leftW ++ ",0)") ]
+                            (renderMaybeSlot model rightW r.height r.right)
+                       ]
+                )
+            ]
+
         TextObj r ->
             renderTextSvg model parentW parentH r.id r.content r.properties
 
@@ -159,6 +197,16 @@ renderObject model parentW parentH obj =
                 ]
                 []
             ]
+
+
+renderMaybeSlot : Model -> Float -> Float -> Maybe LabelObject -> List (Svg.Svg Msg)
+renderMaybeSlot model w h slot =
+    case slot of
+        Just child ->
+            renderObjects model w h [ child ]
+
+        Nothing ->
+            []
 
 
 renderTextSvg : Model -> Float -> Float -> ObjectId -> String -> LO.TextProperties -> List (Svg.Svg Msg)

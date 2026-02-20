@@ -121,6 +121,10 @@ applyDrag drag mouseX mouseY =
             , height = clampMin (sr.height + dy)
             }
 
+        Types.DraggingSplit ->
+            -- DraggingSplit is handled separately in SvgMouseMove; this is a fallback
+            { x = sr.x, y = sr.y, width = sr.width, height = sr.height }
+
 
 update : Msg -> Model -> ( Model, Cmd Msg, OutMsg )
 update msg model =
@@ -307,6 +311,9 @@ update msg model =
                         SetContainerHeight _ ->
                             True
 
+                        SetSplitPercent _ ->
+                            True
+
                         _ ->
                             False
 
@@ -442,14 +449,42 @@ update msg model =
             case LO.findObject targetId (getValue model.content) of
                 Just (Container r) ->
                     let
-                        sf =
-                            computeScaleFactor model
-
                         drag =
                             { mode = mode
                             , targetId = targetId
                             , startMouse = { x = mouseX, y = mouseY }
                             , startRect = { x = r.x, y = r.y, width = r.width, height = r.height }
+                            , startSplit = 0
+                            }
+                    in
+                    ( { model | dragState = Just drag, selectedObjectId = Just targetId }
+                    , Cmd.none
+                    , Types.NoOutMsg
+                    )
+
+                Just (VSplit r) ->
+                    let
+                        drag =
+                            { mode = mode
+                            , targetId = targetId
+                            , startMouse = { x = mouseX, y = mouseY }
+                            , startRect = { x = r.x, y = r.y, width = r.width, height = r.height }
+                            , startSplit = r.split
+                            }
+                    in
+                    ( { model | dragState = Just drag, selectedObjectId = Just targetId }
+                    , Cmd.none
+                    , Types.NoOutMsg
+                    )
+
+                Just (HSplit r) ->
+                    let
+                        drag =
+                            { mode = mode
+                            , targetId = targetId
+                            , startMouse = { x = mouseX, y = mouseY }
+                            , startRect = { x = r.x, y = r.y, width = r.width, height = r.height }
+                            , startSplit = r.split
                             }
                     in
                     ( { model | dragState = Just drag, selectedObjectId = Just targetId }
@@ -475,37 +510,89 @@ update msg model =
 
                         svgDy =
                             (mouseY - drag.startMouse.y) / sf
-
-                        newDrag =
-                            { drag | startMouse = drag.startMouse }
-
-                        svgRect =
-                            applyDrag { drag | startMouse = { x = 0, y = 0 } } svgDx svgDy
-
-                        -- For applyDrag, we pass scaled deltas as the mouse coords
-                        -- since startMouse is 0,0, the dx/dy become our svg deltas
-                        newContent =
-                            LO.updateObjectInTree drag.targetId
-                                (\obj ->
-                                    case obj of
-                                        Container r ->
-                                            Container
-                                                { r
-                                                    | x = svgRect.x
-                                                    , y = svgRect.y
-                                                    , width = svgRect.width
-                                                    , height = svgRect.height
-                                                }
-
-                                        _ ->
-                                            obj
-                                )
-                                (getValue model.content)
                     in
-                    ( { model | content = Dirty newContent }
-                    , Cmd.none
-                    , Types.NoOutMsg
-                    )
+                    case drag.mode of
+                        Types.DraggingSplit ->
+                            let
+                                newContent =
+                                    LO.updateObjectInTree drag.targetId
+                                        (\obj ->
+                                            case obj of
+                                                VSplit r ->
+                                                    let
+                                                        initialSplitPx =
+                                                            r.height * drag.startSplit / 100
+
+                                                        newSplit =
+                                                            clamp 5 95 ((initialSplitPx + svgDy) / r.height * 100)
+                                                    in
+                                                    VSplit { r | split = newSplit }
+
+                                                HSplit r ->
+                                                    let
+                                                        initialSplitPx =
+                                                            r.width * drag.startSplit / 100
+
+                                                        newSplit =
+                                                            clamp 5 95 ((initialSplitPx + svgDx) / r.width * 100)
+                                                    in
+                                                    HSplit { r | split = newSplit }
+
+                                                _ ->
+                                                    obj
+                                        )
+                                        (getValue model.content)
+                            in
+                            ( { model | content = Dirty newContent }
+                            , Cmd.none
+                            , Types.NoOutMsg
+                            )
+
+                        _ ->
+                            let
+                                svgRect =
+                                    applyDrag { drag | startMouse = { x = 0, y = 0 } } svgDx svgDy
+
+                                newContent =
+                                    LO.updateObjectInTree drag.targetId
+                                        (\obj ->
+                                            case obj of
+                                                Container r ->
+                                                    Container
+                                                        { r
+                                                            | x = svgRect.x
+                                                            , y = svgRect.y
+                                                            , width = svgRect.width
+                                                            , height = svgRect.height
+                                                        }
+
+                                                VSplit r ->
+                                                    VSplit
+                                                        { r
+                                                            | x = svgRect.x
+                                                            , y = svgRect.y
+                                                            , width = svgRect.width
+                                                            , height = svgRect.height
+                                                        }
+
+                                                HSplit r ->
+                                                    HSplit
+                                                        { r
+                                                            | x = svgRect.x
+                                                            , y = svgRect.y
+                                                            , width = svgRect.width
+                                                            , height = svgRect.height
+                                                        }
+
+                                                _ ->
+                                                    obj
+                                        )
+                                        (getValue model.content)
+                            in
+                            ( { model | content = Dirty newContent }
+                            , Cmd.none
+                            , Types.NoOutMsg
+                            )
 
         Types.SvgMouseUp ->
             case model.dragState of
@@ -520,6 +607,9 @@ update msg model =
                                     False
 
                                 ResizingHandle _ ->
+                                    True
+
+                                Types.DraggingSplit ->
                                     True
 
                         newModel =
@@ -593,6 +683,9 @@ update msg model =
                                         DropInto tid ->
                                             tid
 
+                                        DropIntoSlot tid _ ->
+                                            tid
+
                                 -- Prevent dropping into own descendants
                                 isSelfOrDescendant =
                                     (tds.draggedId == targetId)
@@ -614,6 +707,9 @@ update msg model =
 
                                                 DropInto tid ->
                                                     LO.addObjectTo (Just tid) obj withoutObj
+
+                                                DropIntoSlot splitId slot ->
+                                                    LO.addObjectToSlot splitId slot obj withoutObj
 
                                         newModel =
                                             { model
@@ -643,6 +739,29 @@ update msg model =
                     let
                         newContent =
                             LO.addObjectTo maybeParentId obj withoutObj
+
+                        newModel =
+                            { model | content = Clean newContent }
+                    in
+                    ( newModel, Cmd.none, Types.NoOutMsg )
+                        |> withContentCmd newModel
+
+                Nothing ->
+                    ( model, Cmd.none, Types.NoOutMsg )
+
+        Types.MoveObjectToSlot objId splitId slotPosition ->
+            let
+                currentContent =
+                    getValue model.content
+
+                ( maybeObj, withoutObj ) =
+                    LO.removeAndReturn objId currentContent
+            in
+            case maybeObj of
+                Just obj ->
+                    let
+                        newContent =
+                            LO.addObjectToSlot splitId slotPosition obj withoutObj
 
                         newModel =
                             { model | content = Clean newContent }
@@ -857,10 +976,32 @@ applyPropertyChange change obj =
         ( SetContainerName val, Container r ) ->
             Container { r | name = val }
 
+        ( SetContainerName val, VSplit r ) ->
+            VSplit { r | name = val }
+
+        ( SetContainerName val, HSplit r ) ->
+            HSplit { r | name = val }
+
         ( SetContainerX val, Container r ) ->
             case String.toFloat val of
                 Just v ->
                     Container { r | x = v }
+
+                Nothing ->
+                    obj
+
+        ( SetContainerX val, VSplit r ) ->
+            case String.toFloat val of
+                Just v ->
+                    VSplit { r | x = v }
+
+                Nothing ->
+                    obj
+
+        ( SetContainerX val, HSplit r ) ->
+            case String.toFloat val of
+                Just v ->
+                    HSplit { r | x = v }
 
                 Nothing ->
                     obj
@@ -873,6 +1014,22 @@ applyPropertyChange change obj =
                 Nothing ->
                     obj
 
+        ( SetContainerY val, VSplit r ) ->
+            case String.toFloat val of
+                Just v ->
+                    VSplit { r | y = v }
+
+                Nothing ->
+                    obj
+
+        ( SetContainerY val, HSplit r ) ->
+            case String.toFloat val of
+                Just v ->
+                    HSplit { r | y = v }
+
+                Nothing ->
+                    obj
+
         ( SetContainerWidth val, Container r ) ->
             case String.toFloat val of
                 Just v ->
@@ -881,10 +1038,58 @@ applyPropertyChange change obj =
                 Nothing ->
                     obj
 
+        ( SetContainerWidth val, VSplit r ) ->
+            case String.toFloat val of
+                Just v ->
+                    VSplit { r | width = v }
+
+                Nothing ->
+                    obj
+
+        ( SetContainerWidth val, HSplit r ) ->
+            case String.toFloat val of
+                Just v ->
+                    HSplit { r | width = v }
+
+                Nothing ->
+                    obj
+
         ( SetContainerHeight val, Container r ) ->
             case String.toFloat val of
                 Just v ->
                     Container { r | height = v }
+
+                Nothing ->
+                    obj
+
+        ( SetContainerHeight val, VSplit r ) ->
+            case String.toFloat val of
+                Just v ->
+                    VSplit { r | height = v }
+
+                Nothing ->
+                    obj
+
+        ( SetContainerHeight val, HSplit r ) ->
+            case String.toFloat val of
+                Just v ->
+                    HSplit { r | height = v }
+
+                Nothing ->
+                    obj
+
+        ( SetSplitPercent val, VSplit r ) ->
+            case String.toFloat val of
+                Just v ->
+                    VSplit { r | split = clamp 5 95 v }
+
+                Nothing ->
+                    obj
+
+        ( SetSplitPercent val, HSplit r ) ->
+            case String.toFloat val of
+                Just v ->
+                    HSplit { r | split = clamp 5 95 v }
 
                 Nothing ->
                     obj

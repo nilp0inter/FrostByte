@@ -120,6 +120,38 @@ collectForObject model parentW parentH obj =
         Container r ->
             collectMeasurements model r.width r.height r.content
 
+        VSplit r ->
+            let
+                topH =
+                    r.height * r.split / 100
+
+                bottomH =
+                    r.height - topH
+
+                topReqs =
+                    r.top |> Maybe.map (collectForObject model r.width topH) |> Maybe.withDefault []
+
+                bottomReqs =
+                    r.bottom |> Maybe.map (collectForObject model r.width bottomH) |> Maybe.withDefault []
+            in
+            topReqs ++ bottomReqs
+
+        HSplit r ->
+            let
+                leftW =
+                    r.width * r.split / 100
+
+                rightW =
+                    r.width - leftW
+
+                leftReqs =
+                    r.left |> Maybe.map (collectForObject model leftW r.height) |> Maybe.withDefault []
+
+                rightReqs =
+                    r.right |> Maybe.map (collectForObject model rightW r.height) |> Maybe.withDefault []
+            in
+            leftReqs ++ rightReqs
+
         TextObj r ->
             let
                 maxWidth =

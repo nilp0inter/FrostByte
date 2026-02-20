@@ -55,12 +55,50 @@ encodeLabelObject obj =
                 , ( "url", Encode.string r.url )
                 ]
 
+        VSplit r ->
+            Encode.object
+                [ ( "type", Encode.string "vsplit" )
+                , ( "id", Encode.string r.id )
+                , ( "name", Encode.string r.name )
+                , ( "x", Encode.float r.x )
+                , ( "y", Encode.float r.y )
+                , ( "width", Encode.float r.width )
+                , ( "height", Encode.float r.height )
+                , ( "split", Encode.float r.split )
+                , ( "top", encodeMaybeLabelObject r.top )
+                , ( "bottom", encodeMaybeLabelObject r.bottom )
+                ]
+
+        HSplit r ->
+            Encode.object
+                [ ( "type", Encode.string "hsplit" )
+                , ( "id", Encode.string r.id )
+                , ( "name", Encode.string r.name )
+                , ( "x", Encode.float r.x )
+                , ( "y", Encode.float r.y )
+                , ( "width", Encode.float r.width )
+                , ( "height", Encode.float r.height )
+                , ( "split", Encode.float r.split )
+                , ( "left", encodeMaybeLabelObject r.left )
+                , ( "right", encodeMaybeLabelObject r.right )
+                ]
+
         ShapeObj r ->
             Encode.object
                 [ ( "type", Encode.string "shape" )
                 , ( "id", Encode.string r.id )
                 , ( "properties", encodeShapeProperties r.properties )
                 ]
+
+
+encodeMaybeLabelObject : Maybe LabelObject -> Encode.Value
+encodeMaybeLabelObject maybeObj =
+    case maybeObj of
+        Just obj ->
+            encodeLabelObject obj
+
+        Nothing ->
+            Encode.null
 
 
 encodeTextProperties : LO.TextProperties -> Encode.Value

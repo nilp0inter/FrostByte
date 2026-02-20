@@ -139,6 +139,44 @@ labelObjectByType typeStr =
                 (Decode.field "id" Decode.string)
                 (Decode.field "properties" shapePropertiesDecoder)
 
+        "vsplit" ->
+            Decode.succeed
+                (\id name x y w h split top bottom ->
+                    VSplit { id = id, name = name, x = x, y = y, width = w, height = h, split = split, top = top, bottom = bottom }
+                )
+                |> andMap (Decode.field "id" Decode.string)
+                |> andMap
+                    (Decode.field "name" Decode.string
+                        |> Decode.maybe
+                        |> Decode.map (Maybe.withDefault "")
+                    )
+                |> andMap (Decode.field "x" Decode.float)
+                |> andMap (Decode.field "y" Decode.float)
+                |> andMap (Decode.field "width" Decode.float)
+                |> andMap (Decode.field "height" Decode.float)
+                |> andMap (Decode.field "split" Decode.float)
+                |> andMap (Decode.field "top" (Decode.lazy (\_ -> Decode.nullable labelObjectDecoder)))
+                |> andMap (Decode.field "bottom" (Decode.lazy (\_ -> Decode.nullable labelObjectDecoder)))
+
+        "hsplit" ->
+            Decode.succeed
+                (\id name x y w h split left right ->
+                    HSplit { id = id, name = name, x = x, y = y, width = w, height = h, split = split, left = left, right = right }
+                )
+                |> andMap (Decode.field "id" Decode.string)
+                |> andMap
+                    (Decode.field "name" Decode.string
+                        |> Decode.maybe
+                        |> Decode.map (Maybe.withDefault "")
+                    )
+                |> andMap (Decode.field "x" Decode.float)
+                |> andMap (Decode.field "y" Decode.float)
+                |> andMap (Decode.field "width" Decode.float)
+                |> andMap (Decode.field "height" Decode.float)
+                |> andMap (Decode.field "split" Decode.float)
+                |> andMap (Decode.field "left" (Decode.lazy (\_ -> Decode.nullable labelObjectDecoder)))
+                |> andMap (Decode.field "right" (Decode.lazy (\_ -> Decode.nullable labelObjectDecoder)))
+
         _ ->
             Decode.fail ("Unknown label object type: " ++ typeStr)
 
