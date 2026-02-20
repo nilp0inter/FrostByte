@@ -3,7 +3,7 @@ module Page.Label.View exposing (view)
 import Data.LabelObject as LO exposing (LabelObject(..), ObjectId, ShapeType(..))
 import Dict
 import Html exposing (..)
-import Html.Attributes exposing (class, disabled, href, id, type_, value)
+import Html.Attributes exposing (class, disabled, href, id, rows, type_, value)
 import Html.Events exposing (onBlur, onClick, onInput)
 import Page.Label.Types exposing (ComputedText, Model, Msg(..))
 import Svg exposing (svg)
@@ -308,9 +308,9 @@ viewValueInput model varName =
     in
     div []
         [ label [ class "block text-xs text-gray-500 mb-1" ] [ text varName ]
-        , input
-            [ type_ "text"
-            , class "w-full border border-gray-300 rounded px-2 py-1 text-sm"
+        , textarea
+            [ rows 2
+            , class "w-full border border-gray-300 rounded px-2 py-1 text-sm resize-y"
             , value currentVal
             , onInput (UpdateValue varName)
             , onBlur CommitValues

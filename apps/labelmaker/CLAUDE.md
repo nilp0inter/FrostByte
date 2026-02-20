@@ -262,7 +262,7 @@ The editor page (`/template/<uuid>`) is a live label canvas editor with composab
 1. Any layout-affecting change (label type, object properties, sample values, padding) emits `RequestTextMeasures` via OutMsg with a batch of requests
 2. `Main.elm` sends all requests through `Ports.requestTextMeasure` via `Cmd.batch`
 3. `collectMeasurements` in Types.elm walks the object tree, threading container bounds, emitting one request per text/variable object
-4. JavaScript (`main.js`) uses Canvas API `measureText()` to shrink font from max to min until text fits width, then checks `maxHeight` for vertical fitting
+4. JavaScript (`main.js`) splits text by `\n` into paragraphs, measures the longest segment to shrink font, then word-wraps each paragraph independently. Empty paragraphs (`\n\n`) produce blank lines. If `maxHeight > 0`, further shrinks to fit wrapped lines within the vertical constraint
 5. Results sent back via `Ports.receiveTextMeasureResult` → `Main.elm` → `GotTextMeasureResult` msg
 6. Each result is stored in `computedTexts` dict keyed by object ID
 7. SVG preview re-renders with computed font sizes and wrapped lines
@@ -291,8 +291,8 @@ The editor page (`/template/<uuid>`) is a live label canvas editor with composab
 3. **Add toolbar**: buttons to add Text, Variable, Container, Rectangle, Circle, Line, Image (appends to root or inside selected container)
 4. **Property editor** (bottom): context-sensitive controls for selected object:
    - Container: name, x, y, width, height
-   - TextObj: content, font family, font size, horizontal alignment, vertical alignment, RGB color
-   - VariableObj: variable name, sample value, font family, font size, horizontal alignment, vertical alignment, RGB color
+   - TextObj: content (multiline textarea), font family, font size, horizontal alignment, vertical alignment, RGB color
+   - VariableObj: variable name, sample value (multiline textarea), font family, font size, horizontal alignment, vertical alignment, RGB color
    - ShapeObj: shape type dropdown, RGB color
    - ImageObj: URL input
    - All types: "Mover a" dropdown to reparent into a container or root level
@@ -360,7 +360,7 @@ Label name is editable in the header. Uses deferred persistence:
 
 ### Value Editing
 
-Each variable in the template has a text input. Uses deferred persistence:
+Each variable in the template has a multiline textarea. Uses deferred persistence:
 1. `onInput` → `UpdateValue`: sets `Dirty val` in `values` dict, triggers text remeasurement for updated preview
 2. `onBlur` → `CommitValues`: if any value is `Dirty`, emits `label_values_set` event with all values, sets all to `Clean`
 
@@ -377,7 +377,7 @@ The labelset editor page (`/set/<uuid>`) displays a spreadsheet of rows where ea
 ### Spreadsheet
 
 - Header: "#" + one column per variable name
-- Rows: clickable row number (selects row for preview) + `<input>` per cell
+- Rows: clickable row number (selects row for preview) + `<textarea>` per cell (supports multiline values; Enter inserts newline when editing, Ctrl+Enter adds new row)
 - Selected row highlighted with `bg-label-50`
 - Delete button per row (hidden if only 1 row)
 - "Agregar fila" button below table adds a row with empty values
@@ -433,7 +433,7 @@ port receivePngResult : (PngResult -> msg) -> Sub msg
 
 `Main.elm` subscribes to both `receiveTextMeasureResult` and `receivePngResult`, forwarding results to the active page. Text measurements are used by both the template editor and label editor. SVG-to-PNG conversion is used by the label editor for printing.
 
-The JS handler in `main.js` performs two-pass text fitting: first shrinks font to fit `maxWidth`, then if `maxHeight > 0`, further shrinks to fit wrapped lines within the vertical constraint. Font loading (Atkinson Hyperlegible) uses base64 embedding for accurate SVG-to-PNG rendering.
+The JS handler in `main.js` supports multiline text: it splits by `\n` into paragraphs, measures the longest segment for font shrinking, then word-wraps each paragraph independently. Empty paragraphs (`\n\n`) produce blank lines. If `maxHeight > 0`, further shrinks to fit wrapped lines within the vertical constraint. Font loading (Atkinson Hyperlegible) uses base64 embedding for accurate SVG-to-PNG rendering.
 
 ## Installing Elm Packages
 

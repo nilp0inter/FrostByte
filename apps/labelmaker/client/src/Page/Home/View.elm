@@ -4,7 +4,7 @@ import Data.LabelObject as LO exposing (LabelObject(..), ObjectId, ShapeType(..)
 import Data.LabelTypes exposing (LabelTypeSpec, isEndlessLabel, labelTypes)
 import Dict
 import Html exposing (..)
-import Html.Attributes exposing (checked, class, classList, for, href, id, max, min, placeholder, selected, step, style, type_, value)
+import Html.Attributes exposing (checked, class, classList, for, href, id, max, min, placeholder, rows, selected, step, style, type_, value)
 import Html.Events exposing (onBlur, onCheck, onClick, onInput)
 import Json.Decode as Decode
 import Page.Home.Types exposing (ComputedText, DragMode(..), DropTarget(..), Handle(..), Model, Msg(..), PropertyChange(..))
@@ -776,7 +776,7 @@ viewPropertiesFor model objId obj =
         TextObj r ->
             div [ class "space-y-2" ]
                 [ propField "Contenido"
-                    (propTextInput r.content (\v -> UpdateObjectProperty objId (SetTextContent v)) CommitContent)
+                    (propTextArea r.content (\v -> UpdateObjectProperty objId (SetTextContent v)) CommitContent)
                 , viewTextPropertiesInputs objId r.properties
                 ]
 
@@ -785,7 +785,7 @@ viewPropertiesFor model objId obj =
                 [ propField "Variable"
                     (propTextInput r.name (\v -> UpdateObjectProperty objId (SetVariableName v)) CommitContent)
                 , propField "Valor de ejemplo"
-                    (propTextInput
+                    (propTextArea
                         (Dict.get r.name model.sampleValues |> Maybe.map getValue |> Maybe.withDefault "")
                         (\v -> UpdateSampleValue r.name v)
                         (CommitSampleValue r.name)
@@ -952,6 +952,18 @@ propTextInput val toMsg blurMsg =
     input
         [ type_ "text"
         , class "w-full border border-gray-300 rounded px-2 py-1 text-sm"
+        , value val
+        , onInput toMsg
+        , onBlur blurMsg
+        ]
+        []
+
+
+propTextArea : String -> (String -> Msg) -> Msg -> Html Msg
+propTextArea val toMsg blurMsg =
+    textarea
+        [ rows 2
+        , class "w-full border border-gray-300 rounded px-2 py-1 text-sm resize-y"
         , value val
         , onInput toMsg
         , onBlur blurMsg

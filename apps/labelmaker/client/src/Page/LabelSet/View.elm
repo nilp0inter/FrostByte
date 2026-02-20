@@ -3,7 +3,7 @@ module Page.LabelSet.View exposing (view)
 import Data.LabelObject as LO exposing (LabelObject(..), ObjectId, ShapeType(..))
 import Dict
 import Html exposing (..)
-import Html.Attributes exposing (class, disabled, href, id, maxlength, placeholder, readonly, style, type_, value)
+import Html.Attributes exposing (class, disabled, href, id, maxlength, placeholder, readonly, rows, style, type_, value)
 import Html.Events exposing (onBlur, onClick, onInput, preventDefaultOn)
 import Json.Decode
 import Page.LabelSet.Types exposing (CellMode(..), ComputedText, Model, Msg(..), cellId, selectedRowValues)
@@ -438,10 +438,10 @@ viewRow model rowIndex rowValues =
                                 ""
                     in
                     td [ class "border border-gray-200 px-1 py-0" ]
-                        [ input
-                            [ type_ "text"
+                        [ textarea
+                            [ rows 1
                             , id (cellId rowIndex colIndex)
-                            , class ("w-full px-1 py-1 text-sm border-none focus:outline-none bg-transparent" ++ ringClass)
+                            , class ("w-full px-1 py-1 text-sm border-none focus:outline-none bg-transparent resize-none" ++ ringClass)
                             , value (Dict.get varName rowValues |> Maybe.withDefault "")
                             , readonly (not isEditing)
                             , onInput (UpdateCell rowIndex varName)
